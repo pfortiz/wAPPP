@@ -1,0 +1,1 @@
+wAPPP or workflows for Automated Parallel data Processing Pipelines  is a toolkit designed to take advantage of running complex sets of processes in a parallel environment following as few rules as possible.
