@@ -1756,6 +1756,7 @@ HEADER
 # taskd: ASSIGNTO|DEFINE var-name command -Assigns the results of 'command' to var-name
 # taskd: ASSIGNTO|DEFINE var-name list -Assigns the following arguments to a list
 # taskd: ASSIGNTO|DEFINE var-name list-from-file -Assigns the lines in the file as a list
+# taskd: ASSIGNTO|DEFINE var-name split String pattern ordinal -Assigns the "ordinal" element from "String" split using "pattern"
 
         if($versyntax == 1){ next; }
 # what makes tSteps to be wrong to wanting to revert to originalSteps?
@@ -1822,6 +1823,13 @@ HEADER
                $oval .= $_;
             }
             close(LX);
+            $$newvar = $oval;
+        } elsif ($akti eq "split"){
+            $istring = shift(@akargs);
+            $pattern = shift(@akargs);
+            $ordinal = shift(@akargs) - 1;
+            @sparts = split(/$pattern/, $istring);
+            $oval = $sparts[$ordinal];
             $$newvar = $oval;
         } elsif ($akti eq "list"){
             @$newvar = @akargs;
