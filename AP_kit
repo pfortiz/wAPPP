@@ -1,0 +1,34 @@
+#!/usr/bin/perl
+
+# This script is meant to find all files under the pointed directory (using
+# find) and then open and close them, without doing anything else with
+# them. The aim is to update them.
+#
+# AP_kit:  keep in touch :-)
+# 
+# Author: Patricio F. Ortiz
+# Date: March 22, 2017
+#
+
+
+my @parts = split(/\//, $0);
+my $me = pop(@parts);
+
+
+if($#ARGV < 0){
+    die "Usage: $me full-path-to-examine\n";
+}
+
+$fullPath = shift(@ARGV);
+
+open(F, "find $fullPath -type f |");
+while(<F>){
+    chop;
+    push @files, $_;
+#    print "Found $_\n";
+    open(K, "<$_");
+    $a = <K>;
+    close(K);
+}
+close(F);
+

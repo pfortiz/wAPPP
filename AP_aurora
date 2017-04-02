@@ -1,0 +1,542 @@
+#!/usr/bin/perl
+
+# aurora: AUtomated pROcessing Runtime Assistant
+#
+# This script will help you define the most efficient way to construct an 
+# automated processing package
+#
+# Why aurora?  Siri, alexa, and others are taken, so let it be aurora :-) :-)
+#
+# Usage: AP_aurora
+#
+# 
+# Author: Patricio F. Ortiz
+# Date: March 07, 2017
+#
+
+use Time::Local;
+
+my @parts = split(/\//, $0);
+my $me = pop(@parts);
+
+my $basePath;
+my %apDict;
+
+BEGIN{
+    sub getFromRc(){
+        my $file = @_[0];
+        my %rcDict;
+        open(F, "<$file");
+        while(<F>){
+            if(/^#/ or /^$/){ next; }
+            chop;
+            ($key, $value) = split(/=/,$_,2);
+            $rcDict{$key} = "$value";
+        }
+        close(F);
+        return %rcDict;
+    }
+    
+    my $home = $ENV{HOME};
+    my $rcfile = "$home/.automatedProcessing";
+    if(!-e $rcfile){
+        die "Please run AP_assistant first even from /tmp\n";
+    }
+    %apDict = &getFromRc($rcfile);
+    $basePath = $apDict{"basePath"};
+#    print "basepath: $basePath\n";
+}
+
+use lib "$basePath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
+#use ap_timex qw(&isLeap &daysInMonth &daysInYear &listOfDates &datesBetween &segmentedDates dateToDoy);
+use ap_timex;
+use ap_predef;
+
+$user = $ENV{USER};
+$cwd = `pwd`;
+chop ($cwd);
+$cwd =~ s/\/panfs\/alice.panfs.cluster//;
+$ucprefixes = &cexp();
+#print "$ucprefixes\n";
+#exit;
+
+$project_name = "undef";
+$traceFile = "AP_project";
+if(-e $traceFile){
+    open(TRACE, "<$traceFile");
+    $project_name = <TRACE>;
+    chop($project_name);
+    close(TRACE);
+    print <<"QUESTION";
+Hello $user,
+
+Good to see you again.  This directory,
+$cwd
+contains an AP project named $project_name.
+
+I will ask you a few question to better determine the nature of your
+aoutoamated processing needs. 
+
+Feel free to go through the advice stages or to define new tasks for 
+project $project_name.
+
+Please use 'y' for yes, 'n' for no, and other
+corresponging answers when I ask you. Thanks, Let's start...
+
+QUESTION
+} else {
+    print <<"QUESTION";
+Hello $user,
+
+I will ask you a few question to better determine the nature of your
+aoutoamated processing needs. 
+
+The idea is to design packages which contain sets of tasks to be applied
+to one particular day (date). 
+
+Each task is handled by AP_runPipeline, and contains all the knowledge
+necessary to successfully complete it.
+
+Please use 'y' for yes, 'n' for no, and other
+corresponging answers when I ask you. Thanks, Let's start...
+
+QUESTION
+}
+
+$build_steps = 0;
+
+$a = &question("Do you want me give you advice XOR advice and building of each step?\na = advice only\nb = advice + building", "a", "b");
+
+if($a eq "a" ){
+    $build_steps = 0;
+
+    print <<"ADVICE";
+
+I assume you have already a clear idea of what your processing tasks need to do.
+AP_task-manager will make sure that they are all executed in due time.
+
+There are a few types of tasks according to their functionality:
+- data downloading tasks (using ftp and python)
+- verification that raw data exists to start tasks
+- processing tasks (processing in the GT sense, using a "processor")
+- data validation tasks (applied to the data produced in processing tasks)
+- data uploading tasks (using ftp and python)
+
+There are two types of tasks from the task-manager point of view:
+- tasks which can run immediately, i.e., they don't depend on any other task.
+- tasks which are executed only when a previous set of tasks have been 
+  completed. These are tasks with dependencies.
+
+Processing packages are self-contained in a directory of its own, which you can name as you wish, obviously calling it something meaningful, like:
+Terra-L2-L3  (to indicate Modis Terra, processings of Level2 and Level 3
+
+Enter the number of days for which you intennd to apply this workflow
+ADVICE
+    $ndays = &answer();
+#    @lod = &getListOfDates($a);
+#    $ndays = $#lod + 1;
+    print "$ndays days to analyse\n";
+    if($ndays < 7){
+        print <<"ADVICE";
+
+Whether your data is on disk or not, this seems to be a low data volume
+situation, and parallelising all tasks seems totally plausible, even if you
+need to export them to external servers.
+
+Feel free to proceed to define your whole processing (set of tasks) by using 
+AP_assistant, AP_aurora in full building mode or if you are experienced enough,
+to do it by hand.
+
+Good luck. May the force be with you.
+
+ADVICE
+    } else {
+$a = &question("Is your data already in disk?\na = all necessary raw data is in disk\nb = all (or some) data needs to be imported", "a", "b");
+        if($a eq "a" ){
+            print <<"ADVICE";
+
+Although this is a high data-volume situation, $ndays days of data are already
+in the system, hence, you should proceed without other worries. The
+task-manager will look after all the tasks, executing them and monitoring
+them.
+
+Feel free to proceed to define your whole processing (set of tasks) by using 
+AP_assistant, AP_aurora in full building mode or if you are experienced enough,
+do it by hand.
+
+Good luck. May, the force be with you.
+
+ADVICE
+        } elsif($a eq "b"){
+            print <<"ADVICE";
+
+Oh dear!  Data acquisition is usually a bottleneck, and bringing $ndays
+days of data simultaneously is highly unadvisable because:
+- The bandwith available to your system is finite, too many downloads
+and the transmission becomes inefficient
+- Putting too many requests on an ftp server may appear as a DOS attack
+- Some ftp servers limit the number of connections from a given site.
+
+I recommend you think of an strategy based on the characteristics of
+the server you need to access.
+
+The task-manager can be instructed to limit the number of tasks of a given
+name to a finite number for this very reason. You can use this feauture.
+
+It may be possible to put several FTP requests into one task, e.g.,
+bring MOD35, MOD03 and MOD021km inside one task, sequentially rather
+than separately. In that way, only when the three pieces of information
+are on disk the task is marked as complete (for any given day), and other tasks which depend on this one can be triggered.
+
+Good luck, and see some of the examples (SURFRAD) on how to acomplish
+this.  The rest of the tasks can be design normally, as if it were  low
+data-volume situation.
+ADVICE
+        }
+    }
+
+} elsif($a eq "b" ){
+    $build_steps = 1;
+
+    if($project_name eq "undef"){
+        $topdir = $cwd;
+        print "We are currently in $cwd.\n";
+        print "Please enter the name of a new Processing-project ";
+        $a = &rawanswer();
+        $newdir = "$cwd/$a";
+        $procedure = $a;
+        if(!-e $newdir){
+            print "Creating directory $cwd/$a\n";
+            system("mkdir -p -m 775 $newdir");
+        }
+        $project_name = $a;
+        $traceFile = "$newdir/AP_project";
+        open(TRACE, ">$traceFile");
+        print TRACE "$project_name\n";
+        close(TRACE);
+    } else {
+        print "We are currently in $cwd.\nProject: $project_name\n";
+        $newdir = $cwd;
+    }
+
+    # we are now in the newly created directory
+    chdir($newdir);
+
+    print <<"OUTLINE";
+Some questions will be posed to you and then I will ask you to define
+a list of tasks.
+
+Details for each task will be entered interactively.
+
+That information will translate into task directories in the "pipelines" folder.
+You must review those details then.
+
+OUTLINE
+
+    print "Enter the number of days you need to process with this workflow, e.g., 365 or 1 or 7 or 4000,\n";
+    $ndays = &answer();
+    print "$ndays days to analyse\n";
+    print <<"ADVICE";
+
+I will use this number of $ndays days if you define data acquisition tasks.
+
+The dates entered above are not hard-coded anywhere, you will need to
+define the dates to be processed every time AP_task-manager is run.
+
+Task-description files will be created for each task you define.
+ADVICE
+
+    $a = &question("Do you: \n(a) want to define the tasks interactively or\n(b) use a bare-bone-file to write just the task names and their dependencies? ", "a", "b");
+    if($a eq "a" ){
+
+        while(){    # loop through asking for tasks to define:
+            print <<"DEFINE_a_TASK";
+Please define a task by name. Use prefixes for commonly used tasks:
+$ucprefixes
+Enter a task name, empty line to finish the task definition phase
+DEFINE_a_TASK
+
+#dlftp- for data downloading from FTP site
+#proc- for data processing task
+#dqc-  for a data validation task
+#dxst- for a data existance verification task
+#pftp- for data uploading to an FTP site
+            $task = &answer();
+        if($task eq ""){
+                last;
+            }
+            $rightNow = localtime;
+
+#        $taskDir = "$newdir/pipelines/$task";
+#        if(!-e $taskDir){ system ("mkdir -p -m 755 $taskDir"); }
+
+            &defineAtask($task);
+
+            foreach $t (keys %allTasks){
+                if($definedTasks{$t} eq ""){
+                    print "\nDefining task $t\n";
+                    &defineAtask($t);
+                }
+            }
+#    $allTasks{$task} = 1;
+#    $definedTasks{$task} = 1;
+        }
+
+    # At this point, after all the td's have been defined, we should run
+    # AP_assistant and let it create the 'tm' file plus the other pipelines
+    
+        system("AP_assistant >> /dev/null");
+        system("AP_assistant > $procedure.tm");
+    } elsif($a eq "b") { 
+        $barebones = "$project_name.bb";
+        open(BB, ">$barebones");
+        print BB <<"BAREBONES";
+NDAYS=$ndays
+
+# this a ADPW bare-bones project description file.
+# You should only enter lines of the form
+#
+# taskName: tasks-on which-this-task-depends
+#
+# eg:
+#
+# proc-TERRA-L2: dlftp-mod35 dlftp-mod021km
+#
+# You can enter comments by starting the line with a #
+# Blank lines are ignored
+#
+# If you need to use tasks defined in another project use the following
+# syntax:
+#
+# /path/to/other/project/taskName: [dependencies]
+#
+# or if you want to use all tasks from a project:
+#
+# /path/to/other/project/*: 
+#
+# In this case, you will have to review the dependencies for each imported task 
+# The dependencies of each imported task will be copied as well.
+# Step carefully.
+#
+# Use the following prefixes for commonly used tasks:
+$ucprefixes
+
+BAREBONES
+        close(BB);
+        print <<"ADVICE";
+$barebones was created in $project_name.
+
+Please 'cd $project_name' and edit $barebones at will.
+
+Once you have finished editing and you are satisfied that the project contains all necessary information run from the current directory ($newdir):
+
+> AP_assistant $barebones
+
+AP_assistant will create a much more extended file for you to edit (at
+will) entering every little detail needed to fully create.
+
+From there on, follow the advice AP_assistant gives you.
+
+ADVICE
+    }
+}
+
+sub defineAtask(){
+    my $task = @_[0];
+    $taskFile = "$newdir/$task.td";
+    print "TaskFile: $taskFile\n";
+    open(TF, ">$taskFile");
+    print TF <<"TD_HEADER";
+# Creation date: $rightNow
+NAME=$task
+TD_HEADER
+    $mem = &dfq("Maxmium memory in MB","9999");
+    print TF "MAXMEMORY=$mem\n";
+    $mwt = &dfq("Maxmium wall-time in decimal hours","1.5");
+    print TF "MAXWALLTIME=$mwt\n";
+    $trs = &dfq("Time Restirictions: HHMM/dom/mon/dow", "*/*/*/*");
+    print TF "TIMERESTRICTIONS=$trs\n";
+    $deps = &dfq("$task depends on these tasks:", "");
+    print TF "DEPENDENCIES=$deps\n";
+    $_ = $deps;
+    @dTasks = split;
+    foreach $_ (@dTasks){
+        $allTasks{$_} = 1;
+    }
+    $ttag = $task;
+again: $i = 1;
+    if($ttag =~ /^dlftp-/){
+        print TF "TYPE=dlftp\n";
+        if($ndays < 7){
+            print TF "MAX_SIMUL_EXEC=1000\n";
+        } else {
+            $ans = &dfq("Maximum simultaneous dowload sessions:  ","42");
+            print TF "MAX_SIMUL_EXEC=$ans\n";
+        }
+        $ans = &dfq("Ftp site url","");
+        print TF "FTP_SITE=$ans\n";
+        $ans = &dfq("username","anonymous");
+        print TF "USERNAME=$ans\n";
+        $ans = &dfq("password","");
+        print TF "PASSWORD=$ans\n";
+        $ans = &dfq("Remote top-path","/collectionX/YYY/SDOY");
+        print TF "REMOTE_PATH=$ans\n";
+        $ans = &dfq("Local top-path","/datum/modus/YYY/SMM/SDD/GT_MUD_4P");
+        print TF "LOCAL_PATH=$ans\n";
+        $ans = &dfq("Pattern each file name must contain","hdf");
+        print TF "PATTERN=$ans\n";
+
+    } elsif($ttag =~ /^proc-/){
+        print TF "TYPE=proc\n";
+        print TF "MAX_SIMUL_EXEC=1000\n";
+        $ans = &dfq("Processor full-path","");
+        print TF "PROCESSOR=$ans\n";
+        $ans = &dfq("Template control-file full-path","");
+        print TF "TEMPLATE_CONTROL_FILE=$ans\n";
+
+    } elsif($ttag =~ /^dqc-/){
+        print TF "TYPE=dqc\n";
+        print TF "MAX_SIMUL_EXEC=1000\n";
+        $ans = &dfq("Base-path to examine, eg, /data/atsr/MODIS","");
+        print TF "BASE_PATH=$ans\n";
+        $ans = &dfq("Product code to examine, eg, GT_MOG_2P:","");
+        print TF "PRODUCT_CODE=$ans\n";
+
+    } elsif($ttag =~ /^dxst-/){
+        print TF "TYPE=dxst\n";
+        print TF "MAX_SIMUL_EXEC=1000\n";
+        $ans = &dfq("Path to examine, eg, /data/atsr/MODIS/YYY/SMM/SDD/GT_MOG_3U","");
+        print TF "DATA_PATH=$ans\n";
+        $ans = &dfq("Pattern to be found in filename, eg, YYYSMMSDD","");
+        print TF "FILE_PATTERN=$ans\n";
+        $ans = &dfq("Tracer file-name (if any):","");
+        print TF "DATA_TRACER=$ans\n";
+
+    } elsif($ttag =~ /^rsync-/){
+        print TF "TYPE=rsync\n";
+        if($ndays < 7){
+#            $ans = &dfq("Ftp site url","");
+            print TF "MAX_SIMUL_EXEC=1000\n";
+        } else {
+            $ans = &dfq("Maximum simultaneous rsync sessions:","8");
+            print TF "MAX_SIMUL_EXEC=$ans\n";
+        }
+        $ans = &dfq("source-path","/data/atsr/MODUS/YYY/SMM/SDD/GT_MUD_4Z");
+        print TF "SOURCE_PATH=$ans\n";
+        $ans = &dfq("destination-path","");
+        print TF "DEST_PATH=$ans\n";
+        $ans = &dfq("rsync-flags","-rh --ignore-existing");
+        print TF "RSYNC-FLAGS=$ans\n";
+        $ans = &dfq("pattern","*.nc");
+        print TF "PATTERN=$ans\n";
+
+    } elsif($ttag =~ /^ulftp-/){
+        print TF "TYPE=ulftp\n";
+        if($ndays < 7){
+            print TF "MAX_SIMUL_EXEC=1000\n";
+        } else {
+            $ans = &dfq("Maximum simultaneous dowload sessions:","42");
+            print TF "MAX_SIMUL_EXEC=$ans\n";
+        }
+        $ans = &dfq("Ftp site url","");
+        print TF "FTP_SITE=$ans\n";
+        $ans = &dfq("username","anonymous");
+        print TF "USERNAME=$ans\n";
+        $ans = &dfq("password","");
+        print TF "PASSWORD=$ans\n";
+        $ans = &dfq("Remote top-path","");
+        print TF "REMOTE_PATH=$ans\n";
+        $ans = &dfq("Local top-path","");
+        print TF "LOCAL_PATH=$ans\n";
+        $ans = &dfq("pattern each file name must contain","hdf");
+        print TF "PATTERN=$ans\n";
+
+    } else { #No predefined prefix, sorry, we ask for everthing!
+        print TF "TYPE=ud\n";
+
+    }
+
+    $allTasks{$task} = 1;
+    $definedTasks{$task} = 1;
+    close(TF);
+}
+
+open(LI, ">$topdir/${project_name}.aurora_in");
+foreach $_ (@input){
+    print LI;
+}
+close(LI);
+
+exit;
+
+
+
+
+sub question(){
+    my ($q, @options) = @_;
+    my $_;
+    undef %doptions;
+    if($#options >= 0){
+        foreach $_ (@options) { $doptions{$_} = 1; }
+        while(){
+            print "$q\n";
+            $a = &answer();
+            if($doptions{$a} == 1){ last; }
+        }
+    } else {
+        print "$q\n";
+        $a = &answer();
+    }
+    return $a;
+}
+
+
+
+
+
+exit;
+
+sub answer(){
+    my $_ = <>;
+    push @input, $_;
+    chop;
+    return lc($_);
+}
+
+sub rawanswer(){
+    my $_ = <>;
+    push @input, $_;
+    chop;
+    return $_;
+}
+
+sub dfq(){
+    my ($qst, $defVal) = @_;
+    print "$qst: [$defVal] ";
+    my $_ = <>;
+    push @input, $_;
+    my $a;
+    chop;
+#    print "\ndef: $defVal ... ANSWER $_|\n";
+    if($_ eq ""){
+        $a = $defVal;
+    } else {
+        $a = $_;
+    }
+    return $a;
+}
+
+
+
+
+exit;
+
+sub timestamp(){
+    ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) =
+                                                localtime(time);
+    $D_mon++;
+    $D_year += 1900;
+    $ts = sprintf("%02d/%02d/$D_year %02d:%02d:%02d", $D_mday, $D_mon, $D_hour, $D_min, $D_sec);
+}
+
+

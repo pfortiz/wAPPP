@@ -1,0 +1,297 @@
+#!/usr/bin/perl
+
+# Code to create two pipeline files to be used in the context of the
+# processing-daemon script
+#
+# The components are in three separate files: parameters, main-tasks, tasks
+# The main-task invokes (most of the time) the single task.
+# This script is agnostic about what kind of pipeline this is.
+#
+#
+# Author: Patricio F. Ortiz
+# History
+# - version 1: March 01, 2017
+# - version 2: March 07, 2017
+#              in the case of processors, the script will try to figure out
+#              if there is a driver file and a PROCESSOR file, and take the
+#              values to insert them in the declarations
+
+# Example usage: createDaemonPipelines params main-tasks tasks
+
+#use strict; # I need black magic
+#use String::Scanf
+(my $sec,my $min,my $hour,my $mday,my $mon,my $yyyy,my $wday,my $yday,my
+$isdst) = localtime();
+my $year = 2042;
+my $mode = "nothing";
+
+my @pparts = split(/\//,$0);
+my $moi = pop(@pparts);
+
+my $nargs = $#ARGV;
+if($nargs < 4){
+   die "Usage: $moi task-params main-tasks specific-tasks walltime[h] maxMem\n";
+} 
+
+my @argos = @ARGV;
+my $pipeParams = shift(@ARGV);
+my $fromtotasks = shift(@ARGV);
+my $dailytasks = shift(@ARGV);
+my $walltime = shift(@ARGV);
+my $memory = shift(@ARGV);
+
+if(!-e $pipeParams){
+    die "$pipeParams does not exist. Quiting\n";
+}
+
+if(!-e $dailytasks){
+    die "$dailytasks does not exist. Quiting\n";
+}
+
+if(!-e $fromtotasks){
+    die "$fromtotasks does not exist. Quiting\n";
+}
+
+$ts = &timestamp();
+open(H, ">>history");
+print H "$ts $moi @argos\n";
+close(H);
+
+my $cwd = `pwd`;
+chop($cwd);
+$cwd =~ s/\/panfs\/alice.panfs.cluster//;
+@pcow = split(/\//,$cwd);
+$pName = pop(@pcow);
+$pap = pop(@pcow);
+$daemonPath = join("/",@pcow) . "/messages";
+$otto = pop(@pcow);
+
+$PROCESSOR = "";
+$control_file = "";
+if(-e "PROCESSOR"){
+    open(P, "<PROCESSOR");
+    $_ = <P>;
+    chop;
+    $PROCESSOR = "PROCESSOR = $_";
+    @pparts = split(/\//);
+    $procName = pop(@pparts);
+    $procName =~ s/\.exe//;
+    $procName = "${otto}-$pName";
+    close(P);
+}
+
+open(L, "ls |");
+while(<L>){
+    chop;
+    if(/driver_ctl/){
+        $template_control = "TEMPLATE_CONTROL = $cwd/$_";
+        $generated_control = "CONTROL_FILE = DAILY_PATH/tm_ctl_${procName}_dSDD_mSMM_yYYY_RUNID.ctl";
+        $control_root = "ROOT_CTL_FILE = DAILY_PATH/tm_ctl_${procName}_dSDD_mSMM_yYYY";
+        $procedure_root = "PROCEDURE_ROOT = ${procName}_dSDD_mSMM_yYYY";
+        $generated_log = "LOG_FILE = DAILY_PATH/tm_log_${procName}_dSDD_mSMM_yYYY_RUNID.log";
+        $generated_done = "DONE_FILE = DAILY_PATH/tm_done_${procName}_dSDD_mSMM_yYYY_RUNID.done";
+
+        $controlDetails = "$template_control\n";
+        $controlDetails .= "$control_root\n";
+        $controlDetails .= "$procedure_root\n";
+        $controlDetails .= "$generated_control\n";
+        $controlDetails .= "$generated_log\n";
+        $controlDetails .= "$generated_done\n";
+    }
+}
+close(L);
+
+%apDict = &getFromRc();
+$basePath = $apDict{"basePath"};
+
+
+$ftpConfig = "";
+if(-e "${pName}FtpDetails"){
+    $ftpConfig = "TASK_PATH/${pName}FtpDetails";
+}
+
+$which = sprintf("SITE_PATH/%s", $apDict{"appath"});
+$apPath = sprintf("SITE_PATH/%s", $apDict{"appath"});
+$which = "AP_PATH";
+$which = sprintf("%s/%s", $apDict{"basePath"}, $apDict{"appath"});
+$localPython = $apDict{"python"};
+
+my $runPipeline = "$which/AP_runPipeline";
+my $mkControl = "$which/AP_makeSingleCtlFile";
+my $fmkControl = "$which/AP_flexibleMakeCtlFile";
+my $verDone = "$which/AP_examineGT_LOG";
+my $balance = "$which/AP_spotUnbalancedAUX_LST";
+my $contentRetriever = "$which/AP_contentRetriever";
+my $getTimeStamp = "$which/AP_getAvailableTimestamp";
+my $extractWhatWasProcessed = "$which/AP_extractProcessedTimestamps";
+my $locateUnprocessed = "$which/AP_locateUnprocessed";
+my $downloader = "$which/AP_ftpDownload.py";
+my $uploader = "$which/AP_ftpUpload.py";
+my $wrapper = "$which/AP_xwrapper";
+
+open(B, "<$pipeParams");
+while(<B>){
+    print DP;
+#    chop;
+    push @tparams, $_;
+}
+close(B);
+
+$fromto = "$pName.main";
+open(FT, ">$fromto");
+print FT <<"DATERANGE";
+# Run this pipeline using: runPipeline date1:date2 $pName.main
+# where dateX = YYYY-MM-DD
+#
+#The following line must exist
+--PARAMETERS
+TAG = $pName
+SITE_PATH=$basePath
+AP_PATH=$apPath
+RUNPIPELINE = $runPipeline
+WALLTIME = $walltime
+MEMORY = $memory
+DAEMON_PATH = $daemonPath
+GET_PATH_CONTENT = $contentRetriever
+DOWNLOADER = $downloader
+UPLAODER = $uploader
+X_WRAPPER = $wrapper
+TASK_PATH = $cwd
+MONTY = $localPython
+
+DATERANGE
+#DONE_TRACER = DAEMON_PATH/YYY/SMM/SDD/TAG.Done
+#FAIL_TRACER = DAEMON_PATH/YYY/SMM/SDD/TAG.Failed
+#RNNG_TRACER = DAEMON_PATH/YYY/SMM/SDD/TAG.Running
+
+if($ftpConfig ne ""){
+    print FT "FTP_CONFIG = $ftpConfig\n\n";
+}
+
+foreach $_ (@tparams){
+    print FT;
+}
+
+
+print FT <<"DATERANGE";
+thisPipe = TASK_PATH/$pName.specific
+
+#The following line must exist
+--TASKS
+
+sexec touch RNNG_TRACER
+
+DATERANGE
+open(FTT, "<$fromtotasks");
+$tid = 0;
+while(<FTT>){ 
+    chop;
+    if(/^#/){
+        $taskTag = "";
+    } elsif($_ ne ""){
+        $taskTag = sprintf("U%03d ", $tid);
+        $tid++;
+    } else {
+        $taskTag = "";
+    }
+#    print FT "$taskTag$_\n";
+    print FT "$_\n";
+}
+close(FTT);
+
+close(FT);
+
+# we should evaluage whether ".specific" is necessary in the cases the main
+# task does not invoke qsub
+
+$daily = "$pName.specific";
+open(DP, ">$daily");
+print  DP <<"SYSTEM_STUFF";
+#The following line must exist
+
+--PARAMETERS
+TAG = $pName
+SITE_PATH=$basePath
+AP_PATH=$apPath
+RUNPIPELINE = $runPipeline
+MAKE_CONTROL = $mkControl
+FLEX_MAKE_CONTROL = $fmkControl
+EXAMINE_DONE = $verDone
+SPOT_BALANCE = $balance
+GET_PATH_CONTENT = $contentRetriever
+GET_TIMESTAMP = $getTimeStamp
+GET_PROCESSED = $extractWhatWasProcessed
+LOCATE_UNPROCESSED = $locateUnprocessed
+DOWNLOADER = $downloader
+UPLAODER = $uploader
+X_WRAPPER = $wrapper
+MONTY = $localPython
+
+TASK_PATH = $cwd
+DAEMON_PATH = $daemonPath
+
+$PROCESSOR
+#DONE_TRACER = DAEMON_PATH/YYY/SMM/SDD/TAG.Done
+#FAIL_TRACER = DAEMON_PATH/YYY/SMM/SDD/TAG.Failed
+#RNNG_TRACER = DAEMON_PATH/YYY/SMM/SDD/TAG.Running
+
+SYSTEM_STUFF
+if($ftpConfig ne ""){
+    print DP "FTP_CONFIG = $ftpConfig\n\n";
+}
+
+foreach $_ (@tparams){
+    print DP;
+}
+
+print DP "$controlDetails\n";
+
+print DP "#The following line must exist\n\n--TASKS\n";
+my $tid = 1;
+my $tasktag;
+open(B, "<$dailytasks");
+while(<B>){ 
+    chop;
+    if(/^#/){
+        $taskTag = "";
+    } elsif($_ ne ""){
+        $taskTag = sprintf("T%03d ", $tid);
+        $tid++;
+    } else {
+        $taskTag = "";
+    }
+    print DP "$_\n";
+}
+close(B);
+close(DP);
+
+exit;
+
+
+sub getFromRc(){
+    my $home = $ENV{HOME};
+    my $file = "$home/.automatedProcessing";
+    my %rcDict;
+    open(F, "<$file");
+    while(<F>){
+            if(/^#/ or /^$/){ next; }
+            chop;
+            ($key, $value) = split(/=/);
+            $rcDict{$key} = $value;
+    }
+    close(F);
+    return %rcDict;
+}
+
+
+sub timestamp(){
+    ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) =
+                                                localtime(time);
+    $D_mon++;
+    $D_year += 1900;
+    $ts = sprintf("%02d/%02d/$D_year %02d:%02d:%02d", $D_mday, $D_mon, $D_hour, $D_min, $D_sec);
+}
+
+
+
+

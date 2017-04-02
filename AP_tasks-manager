@@ -1,0 +1,1340 @@
+#!/usr/bin/perl
+
+# A data processing daemon (parallel-master)
+#
+# multi-date resilient daemon, controlling the launch and relaunch of task
+# sequences until they finish
+#
+# Author: Patricio F. Ortiz
+# Date: March 07, 2017
+#
+# The objective is to create a "generic" processing daemon 
+# capable of performing a series of tasks defined as having dependencies on
+# each other, expanded to the execution of these tasks over a long period
+# of time.
+#
+# The logics of this daemon is the same as the one found in the
+# process-daily-tasks, with the addition of adding time as another
+# dimension.
+#
+#
+# ----------------Documentation for process-daily-tasks-------------
+# The idea is then to make this daemon to have a logics similar to that of
+# a makefile, where tasks entries are comprised of a procedure to achieve
+# the task and a series of dependencies which need to be satisfied in order
+# to trigger this task.
+#
+# The daemon operates being aware of the time of the day to start with certain
+# tasks.
+#
+# The date in which it operates is defined as an input argument
+#
+# In fact, each task may be marked with a
+# "do-not-start-before" time of the day as well as the dependencies.
+#
+# The daemon must have the capacity to launch several tasks in parallel (to
+# gain time)
+#
+# The daemon will create the directory structure for the day it is
+# analysing.
+#
+# The daemon will use an initialisation file which shall contain information
+# about the site, top-Directories, etc., just like the .runPipeline file does.
+#
+# "messages" will be passed to the daemon via tracing files, either created
+# by the daemon or by the triggered processes
+#
+# The triggered processes will have the task to remove launch-messages (but
+# that's still to be seen if it is necessary)
+#
+# The daemon will sleep for a while, wake up and check whether it has tasks
+# to trigger, if not, back to sleep again.
+#
+# The daemon will terminate its execution once all the tasks have been
+# completed.
+#
+# Tasks will also have a "run-on" field, asides from the "do-not-run-before"
+# time of the day field. The idea is that it will be possible to specify
+# tasks which shall run at a specific day of an specific month or a
+# specific day of any month. I will probably steal the '*' notation from
+# crontab to handle this.
+#
+# HHMM/dom/mon/dow
+#
+# HHMM being the time of the day or * if no # restristions apply
+# dom  being the day of the month
+# mon  being the month in numeric form (1=January... 12=December
+# dow  is the day of the week ( 0=Sunday,1=Monday, ...  , 6=Saturday)
+#
+# */1/*/*    means anytime on the first of each month
+# 1000/1/1/*    means 10:00 (am)  on the first of January each year
+# 0600/*/*/1    means 06:00 (am)  every Monday
+#
+# The reason to incorporate this level of complexity is to allow the
+# running of monthly, yearly tasks, and -still unforeseen- weekly tasks
+#
+# Tasks which do need to be run during the day are not to be counted in the
+# tasks-to-complete list.
+#
+#
+# In order to trace what goes on, the daemon will create a tracer for each
+# date it process containing the fields:
+#
+# date host pid unix-time-stamp status standard-time-stamp
+#
+# For the moment  I can imagine the following entries:
+#
+# 2017-01-29 alice 1234 unix-time-stamp STARTED standard-time-stamp
+# 2017-01-29 alice 1234 unix-time-stamp COMPLETED standard-time-stamp
+# 2017-01-29 alice 1234 unix-time-stamp UNFINISHED in X days standard-time-stamp
+
+# The manager daemon may actually look at these files and decide to act
+# upon them, if it finds and incomplete task whose daemon has died (if run
+# in the same machine)
+
+use Time::Local;
+
+# no strict, I need black magic
+# use strict;
+
+# inclusions to deal with time functions. I need to know the number of days
+# in a calendar month, and that depends on whether the year is leap or normal
+#
+
+my $basePath;
+my %apDict;
+
+BEGIN{
+    sub getFromRc(){
+        my $file = @_[0];
+        my %rcDict;
+        open(F, "<$file");
+        while(<F>){
+            if(/^#/ or /^$/){ next; }
+            chop;
+            if(/=/){
+                ($key, $value) = split(/=/,$_,2);
+                $rcDict{$key} = "$value";
+            }
+        }
+        close(F);
+        return %rcDict;
+    }
+    
+    my $home = $ENV{HOME};
+    my $rcfile = "$home/.automatedProcessing";
+    if(!-e $rcfile){
+        die "Please run AP_assistant at least once.\n";
+    }
+    %apDict = &getFromRc($rcfile);
+    $basePath = $apDict{"basePath"};
+}
+
+#use timex qw(&dateToDoy &isLeap &daysInMonth &daysInYear &listOfDates
+#&datesBetween &segmentedDates);
+
+use lib "$basePath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
+use ap_timex;
+
+
+
+$waitTime = 60; # sleep time of 1 minute
+
+
+my @monthsInWords = qw(nothing January February March April May June July August September October November December);
+
+my $scripto = $0;
+my @parts = split(/\//, $0);
+my $me = pop(@parts);
+my $farg = @ARGV[0];
+
+$fullRunPipeline = sprintf("%s/%s/AP_runPipeline", $apDict{"basePath"}, $apDict{"appath"});
+
+if($#ARGV ==  0 and $farg eq "-init"){
+    &create_td_sample_and_readme();
+    exit;
+} elsif ($#ARGV ==  0 and $farg eq "-createStubs"){
+    &makeStubs();
+    exit;
+} elsif($#ARGV < 1){
+#    print "$apDict{'site'} $apDict{'basePath'} $fullRunPipeline\n";
+#    foreach $_ (keys %apDict){ print "A-P dictionary: $_ $apDict{$_}\n"; }
+#    print "Usage:  $me -init\n";
+#    print "Usage:  $me -createStubs\n";
+#
+    die "Usage:  $me tasks-to-run-file date-definitions [extraDim=filename] [-dummyRun]\n\n";
+}
+
+@argos = @ARGV;
+$cwd = `pwd`;
+chop($cwd);
+
+$site = $apDict{"site"};
+$memoryFail = $apDict{"memError"};
+$walltimeFail = $apDict{"wtError"};
+if($memoryFail eq ""){
+    $memoryFail = "Cannot allocate memory";
+}
+$qquery = $apDict{"qquery"};
+
+$dummyRun =0;
+$i = 0;
+foreach $_ (@argos){
+    if($_ eq "-dummyRun"){
+        $dummyRun = 1;
+        undef $argos[$i];
+    }
+    $i++;
+}
+
+#$processingFile = shift(@ARGV);
+#$datesToProcess  = shift(@ARGV);
+#$extraDim = shift(@ARGV);
+$processingFile = shift(@argos);
+$datesToProcess  = shift(@argos);
+$extraDim = shift(@argos);
+
+if($extraDim ne ""){
+    ($xdName, $xdFile) = split(/=/,$extraDim,2);
+    if(-e $xdFile){
+        @path = split(/\//,$xdFile);
+        $xDimName = pop(@path);
+        $xDimName = uc($xDimName);
+        open(X, "<$xdFile");
+        while(<X>){
+            chop;
+            if(/^#/ or /^$/){ next; }
+            push @xDim, $_;
+        }
+        $addXdim = 1;
+    } else {
+        die "File $xdName = $xdFile does not exist\n";
+    }
+} else {
+    push @xDim, "";
+    $addXdim = 0;
+}
+
+@pparts = split(/\//, $processingFile);
+$pipeName = pop(@pparts);
+$basePath = $processingFile;
+$basePath =~ s/$pipeName//;
+if($basePath eq ""){
+    $basePath = $cwd;
+}
+#chop($basePath);
+
+$init = 0;
+if($otherargs eq "-init"){
+    $init = 1;
+}
+
+if(!-e $processingFile){
+    print "$basePath $pipeName\n";
+    die "$processingFile does not exist. Dying...\n";
+}
+
+#print "DTP: $datesToProcess\n";
+$_ = $datesToProcess;
+$date = $datesToProcess;
+
+# it seems that all the if block below should be replaced by the more modern
+# timex getListOfDates() routine, which can handle a number of other things.
+# The results for daily resolution should be exactly the same
+
+@LISTOFDATES = &getListOfDates($datesToProcess);
+
+
+$ts = &timestamp();
+open(H, ">>history");
+print H "$ts $me @argos\n";
+close(H);
+
+
+
+# the expected structure of a processing file is as follows
+# Anything containing a '=' sign is taken as a key/value pair, for instance:
+# timeDelay=1
+#
+# key/value pairs expected:
+# timeDelay=n-days
+# processDirectory=/path/to/the/top/directory, eg, /data/atsr/processGT_S3
+#
+# Tasks and its dependencies should have the following structure:
+#
+# taskid: time-to-trigger walltime max-mem-in-MB pipeline-details [dependencies]
+#
+# ':' is mandatory in tasks
+#
+# time-to-trigger has the format: HHMM/dom/mon/dow
+#
+# HHMM being the time of the day or * if no # restristions apply
+# dom  being the day of the month
+# mon  being the month in numeric form (1=January... 12=December
+# dow  is the day of the week (1=Monday, ...  7=Sunday)
+#
+# an * in any of the fields acts as a wildcard (anything is valid)
+#
+# if time-to-trigger is set, the task will not be run even if all its
+# dependencies are fulfilled.
+#
+# The walltime field lets user define an estimated walltime for each of the
+# tasks, rather than relying on the individual pipelines values. 
+#
+# The tasks-manager will increase the walltime if it was to relaunch a
+# task because it did not complete due to that reason.
+#
+#
+#
+# The logics of the tasks description is very much the logics of a
+# make-file. You build only when the dependencies are available
+#
+# blank lines and lines starting with a '#' will be ignored (as usual)
+#
+# I must be able to define the associated commands to given
+# associated-pipeline-tasks
+#
+# The name "associated-pipeline" is not totally accurate as it should not
+# be mandatory that the daemon spawns a full pipeline, it could be just one
+# command to issue which requires little information
+#
+# In the case of commands or pipelines there should be a way for the code
+# to flag when the operation was not successful, i.e., we need to create 
+# a "fail to complete" status and the daemon should recognise those to
+# perhaps re-submit a job until it completes successfully, this is
+# particularly important in case of the data-acquisition streams which may
+# fail because of servers being temporarily down, etc.
+#
+# Let's give this an initial try...
+
+# when trace = "on", a lot of debugging information is printed to stdout
+my $trace = "on";
+#my $trace = "off";
+
+
+
+
+$initialTime = time;
+my ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) =
+                                                    localtime($initialTime);
+
+# we should trace that we are starting the processing of this task
+$host = `hostname`;
+chop ($host);
+$pid = $$;
+$ltime = localtime;
+
+# This is the generic extraction of each of the tasks listed in the
+# tasks-to-run file
+
+$topDir = $defs{"processingDir"};
+if($topDir eq ""){
+    $topDir = $basePath;
+}
+
+$pipelinesDir = $defs{"pipelinesDir"};
+if($pipelinesDir eq ""){
+    $pipelinesDir = "$basePath/pipelines";
+}
+
+print "pipelinesDir: $pipelinesDir\n";
+print "uber-path:    $basePath\n";
+
+open(P,"<$processingFile");
+while(<P>){
+    chop;
+    if(/^\s*#/ or $_ eq ""){ # nothing of true interest
+       next;
+    }
+    if(/=/){ # we found a definition worth putting in the dictionary
+        ($key, $value) = split(/=/,$_,2);
+        $key =~ s/^\s*//;
+        $key =~ s/\s*$//;
+        $value =~ s/^\s*//;
+        $value =~ s/\s*$//;
+        $defs{$key} = $value;
+    } elsif(/:/) { #task found
+        @parts = split;
+        $task = shift(@parts);
+        $task =~ s/:$//;
+        # we should check whether tasks pipeline directories do exist.
+        if($init == 1){
+            $pldir = "$topDir/pipelines/$task";
+            if(!-e $pldir){
+                system("mkdir -p -m 775 $pldir");
+            }
+        }
+        $timod = shift(@parts);
+        # at this point, see if the current day coincides with some
+        # restrictions. If so, skip to next task
+        ($timeofd, $rday, $rmonth, $dow) = split(/\//,$timod);
+#        $timeOfDay{$task} = $timeofd;
+        $xtime{$task} = &time_hms2dec($timeofd);
+        $dayOfMonth{$task} = $rday;
+        $monthToRun{$task} = $rmonth;
+        $dayOfWeek{$task} = $dow;
+
+#        if($rday ne "*"){
+#            if(int($rday) != int($C_mday) ){
+#                # skip this task altogether
+#                print "Skipping task $task, wrong day: $C_mday, req: $rday\n";
+#                next;
+#            }
+#        }
+#        if($rmonth ne "*"){
+#            if(int($rmonth) != int($C_mon) ){
+#                # skip this task altogether
+#                print "Skipping task $task, wrong month: $C_mday/$C_mon: req: $rday/$rmonth\n";
+#                next;
+#            }
+#        }
+
+        $walltime{$task} = shift(@parts);
+        $maxmem{$task} = shift(@parts);
+        $atTheMost = shift(@parts);
+        if($atTheMost eq "*"){
+            # a very large number of simultaneous processes 
+            $atMost{$task} = 10000;  
+        } else {
+            $atMost{$task} = int($atTheMost);  
+        }
+        $exDim = shift(@parts);
+        $laxDim = "xd$task";
+        if($exDim ne "none"){
+            if(!-e $exDim){
+                die "File $exDim must exist before I can run properly. Please create\n";
+            } else {
+                open(XD, "<$exDim");
+                while(<XD>){
+                    chop;
+                    if(/^#/ or $_ eq ""){ next; }
+                    push @$laxDim, $_;
+#                    print STDERR "Loading xd: $_\n";
+                }
+                close(XD);
+            }
+            @prt = split(/\//, $exDim);
+            $xname = pop (@prt);
+            $extraVar{$task} = uc($xname);
+            print "Extra dimensions for $task: $extraVar{$task} @$laxDim\n";
+        } else {
+            push @$laxDim,"";
+            $extraVar{$task} = "none";
+        }
+#        next;
+        $piper = shift(@parts);
+
+        $nActiveTasks{$task} = 0;
+#        print "Task $task... max# $atMost{$task} nRun $nActiveTasks{$task}\n";
+        
+        $command{$task} = $piper;
+        if($#parts < 0){
+#            $dependencies{$task} = "INDIE";
+            $dependencies{$task} = "";
+            push @independentTasks, $task;
+            $independentTask{$task} = 1;
+        } else {
+            $dependencies{$task} = "@parts";
+            foreach $td (@parts){
+                $tasksDependingOnMe{$td} .= "$task ";
+#                $tdom = "tdom_$td";
+#                %${tdom}{$t} = 1;
+            }
+            push @dependentTasks, $task;
+        }
+        push @tasks, $task;
+    }
+}
+close(P);
+
+#exit;
+
+foreach $tsk (keys %dependencies){
+    undef @iDependOn;
+    &iDepend($tsk, $dependencies{$tsk});
+    foreach $_ (@iDependOn){
+        $dependOnMe{$_} .= "$tsk ";
+    }
+}
+
+#foreach $_ (keys %dependOnMe){
+#    chop($dependOnMe{$_});
+#    $depstring = $dependOnMe{$_};
+#    print "On $_ : |$depstring|\n";
+#}
+#
+#
+#exit;
+
+$maxFails = $defs{"maxFails"};
+if($maxFails eq ""){
+    $maxFails = 100;
+}
+
+if($trace eq "on"){
+    foreach $k (sort keys %defs){
+        $dk = $defs{$k};
+        print "$k >< $dk\n";
+    }
+}
+
+# we need to know the full path for runPipeline's executable
+#$fullRunPipeline = $rpDict{"runPipelineExec"};
+
+$nTasks = $#tasks + 1;
+if($trace eq "on"){
+    print "runPipeline is $fullRunPipeline\n";
+    print "\nIndependent tasks, can be run if no time constraint is in place\n";
+    print "Dependent tasks, can be run if required tasks have completed\n\n";
+    print "Number of tasks to manage: $nTasks\n";
+}
+
+#exit;
+
+# this is the infinite loopy, broken only when no tasks are left to execute
+foreach $dateToProcess (@LISTOFDATES){
+    print STDERR "Sanity check: Dealing with $dateToProcess\n";
+    $nPending{$dateToProcess} = $nTasks;
+    $tracingStarted{$dateToProcess} = 0;
+}
+
+# the idea here is that all .o and .e files for this particular processing
+# get deposited in one site for a number of reasons.
+# The most obvious one would be to examine the error files for error messages
+# like walltime exceeded etc.
+#
+# I made runPipeline accept the argument -slave to impose it not to
+# change directory to its default "scratch directory"
+#
+# The second one is that upon successful completion, all the .o and .e
+# files get erased as part of the housekeeping procedures.
+
+$dotOdotE = "$topDir/dotO_dotEs";
+if(!-e $dotOdotE){
+    system ("mkdir -p -m 775 $dotOdotE");
+}
+chdir($dotOdotE);
+
+$ntimes = 0;
+
+while(){
+    # let's pick up the jobIds of all running jobs
+    undef %runningJobs;
+    if($dummyRun == 0){
+        open(Q, "$qquery | ");
+        $nJobsRunning = 0;
+        undef @errorFiles;
+        undef %errorsById;
+        undef %logsById;
+        if($site eq "UOL"){
+            $_ = <Q>;       # dummy line
+            $_ = <Q>;       # dummy line
+            while(<Q>){
+                chop;
+                @jobs = split();
+                $jid = shift(@jobs);
+                $status = $jobs[3];
+    #            if($status ne "C"){
+    #            }
+                $runningJobs{$jid} = 1;
+                $nJobsRunning++;
+                print "QRJ: $jid\n";
+            } 
+            # how do I distinguish an error in the queue system from a real
+            # situation when no jobs are running??
+            # we are at $dotOdotE   Which files are there?
+            open(E, "ls  | ");
+            while(<E>){
+                chop;
+                if(/\.e/){
+                    push @errorFiles, $_;
+                    @lepath = split(/\.e/);
+                    $eid = $lepath[1];
+                    $errorsById{$eid} = $_;
+    
+    #                print "Error file: $_\n";
+                } elsif (/\.o/){
+                    @lepath = split(/\.o/);
+                    $oid = $lepath[1];
+                    $logsById{$oid} = $_;
+                }
+            }
+            close(E);
+            
+        } elsif($site eq "CEMS"){
+            # this needs fixing...
+            $_ = <Q>;       # dummy line
+            $_ = <Q>;       # dummy line
+            while(<Q>){
+                chop;
+                @jobs = split();
+                $jid = shift(@jobs);
+                $status = $jobs[3];
+    #            if($status ne "C"){
+    #            }
+                $runningJobs{$jid} = 1;
+                $nJobsRunning++;
+                print "QRJ: $jid\n";
+            } 
+            # how do I distinguish an error in the queue system from a real
+            # situation when no jobs are running??
+            # we are at $dotOdotE   Which files are there?
+            open(E, "ls  | ");
+            while(<E>){
+                chop;
+                if(/\.e/){
+                    push @errorFiles, $_;
+                    @lepath = split(/\.err/);
+                    $eid = $lepath[0];
+                    $errorsById{$eid} = $_;
+    
+    #                print "Error file: $_\n";
+                } elsif (/\.l/){
+                    @lepath = split(/\.log/);
+                    $oid = $lepath[0];
+                    $logsById{$oid} = $_;
+                }
+            }
+            close(E);
+            
+        } elsif($site eq "CTCP"){
+        }
+        close(Q);
+    }
+
+
+    $currentTime = time;
+
+    my ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) =
+                                                    localtime($currentTime);
+    $D_year += 1900; $D_mon += 1; $D_yday += 1;
+    $D_smon = sprintf("%02d", $D_mon);
+    $D_smday = sprintf("%02d", $D_mday);
+    $thms = sprintf("%02d%02d", $D_hour, $D_min);
+    $tod = &time_hms2dec($thms);
+
+    # here we should insert the loop on LISTOFDATES, so that we examine the
+    # tasks to be performed, missing, etc. for each of the dates.
+    
+
+    # all information is in. The daemon should be able to start working...
+
+    $totalPendingTasks = 0;
+    foreach $xd (@xDim){
+        foreach $dateToProcess (@LISTOFDATES){
+            if($nPending{$dateToProcess} == 0){
+    #            print STDERR "$dateToProcess tasks completed.\n";
+                next;     # do nothing, there are no pending tasks for this
+                          # particular day
+            }
+            print STDERR "Dealing with $dateToProcess|$xd|\n";
+    
+    
+            # these quantities remain unchanged during the loop, and in fact,
+            # they will be used to determine whether a task shall or shall not
+            # be made part of the daily processing
+            
+            ($C_year, $C_mon, $C_mday) = split(/-/,$dateToProcess);
+    
+            # contrived way to obtain the day of the week for the date:
+            # X_wday
+            $dateUnixTime = timelocal(12, 0, 0, $C_mday, $C_mon-1, $C_year);
+            my ($X_sec,$X_min,$X_hour,$X_mday,$X_mon,$X_year,$X_wday,$X_yday,$X_isdst) =
+                                                        localtime($dateUnixTime);
+            $C_smon = sprintf("%02d", $C_mon);
+            $C_smday = sprintf("%02d", $C_mday);
+            $DATE = "${C_year}-${C_smon}-$C_smday";
+            
+    #        print "basePath: $basePath\n";
+    #        print "pipelinesDir $pipelinesDir\n";
+    #        next;
+            $execsPath = $defs{"execsPath"};
+            $pyexecsPath = $defs{"pythonExecsPath"};
+            
+            $dailyDir = "$topDir/messages/$C_year/$C_smon/$C_smday";
+            $tracersDir = "$topDir/processingLogs";
+            if(!-e $tracersDir){
+                system ("mkdir -p -m 775 $tracersDir");
+            }
+            $dailyTracer = "$tracersDir/${DATE}_${pipeName}.log";
+            if($tracingStarted{$dateToProcess} == 0){
+                open(L, ">>$dailyTracer");
+                print L "$DATE $host $pid $initialTime STARTED  $ltime\n";
+                close(L);
+                $tracingStarted{$dateToProcess} = 1;
+            }
+            
+            if(!-e $dailyDir){
+                print "about to make $dailyDir\n";
+                system("mkdir -p -m 775 $dailyDir");
+    #        } else {
+    #            print "$dailyDir exists\n";
+            }
+        
+            #  old code starts here....
+    
+            $dt = $currentTime - $initialTime;
+            print "TOD: $thms = $tod  $dt [s]\n";
+        
+            # this nPending is now defined for a given date
+            $nPending{$dateToProcess} = 0;
+            foreach $t (@tasks){
+                $laxDim = "xd$t";
+                print STDERR "Task: $t @$laxDim\n";
+                foreach $txd (@$laxDim){
+#                    print STDERR "TXD $txd\n";
+                    $taskDone = "$dailyDir/$t$xd$txd.Done";
+                    $taskRunning = "$dailyDir/$t$xd$txd.Running";
+                    $taskFailed = "$dailyDir/$t$xd$txd.Failed";
+                    $ttracers = "DONE_TRACER=$taskDone ";
+                    $ttracers .= "FAIL_TRACER=$taskFailed ";
+                    $ttracers .= "RNNG_TRACER=$taskRunning";
+                    $dask = "$t$dateToProcess$xd$txd";
+#                    print STDERR "Dask: $dask\n";
+        
+                    if($taskCompleted{$dask} == 1) { next; }
+                    if($taskHasFailed{$dask} == 1) { next; }
+        
+                    if($taskFails{$dask} eq "") {
+                        $taskFails{$dask} = 0;
+                    }
+        
+        #            print "Done: $taskDone\n";
+        #            print "Running $taskRunning\n";
+        #            print "Failed $taskFailed\n";
+        #            next;
+                    if(-e $taskDone){
+                        print "$taskStatus $dask KOMPLETT\n";
+                        $taskCompleted{$dask} = 1;
+                        # task was completed, nothing to do... Next!!
+                        # Actually, we want to remove the error and log file
+                        # associated to this task...
+                        $tjid = $queueJob{$dask};
+                        $efile = $errorsById{$tjid};
+                        $lfile = $logsById{$tjid};
+                        # of course, after seeing that this works, we can unlink
+                        # them
+                        if(-e $efile){
+                            print "unlink $errorsById{$tjid}\n";
+        #                    unlink ($efile);
+                        }
+                        if(-e $lfile){
+                            print "unlink $logsById{$tjid}\n";
+        #                    unlink ($lfile);
+                        }
+                        $nActiveTasks{$t}--;
+        
+                        next;
+                    } else {
+                        if($ntimes == 0){ print "$taskStatus $dask not completed\n";}
+                        $totalPendingTasks++;
+                        $nPending{$dateToProcess}++;
+                    }
+        
+                    $timo = $xtime{$t};
+                    if($timo < $tod or $timo eq "any"){
+                        $taskStatus = "RTL-";
+                    } else {
+                        $taskStatus = "WTL-";
+                        # not time to run the task yet... Next!!
+                        next;
+                    }
+                    $rday = $dayOfMonth{$t};
+                    $rmonth = $monthToRun{$t};
+                    $dow = $dayOfWeek{$t};
+        
+                    if($rday ne "*"){
+                        if(int($rday) != int($X_mday) ){
+                            # skip this task altogether
+                            print "Skip task $task, wrong day: $X_mday req: $rday\n";
+                            next;
+                        }
+                    }
+                    if($dow ne "*"){
+                        if(int($dow) != int($X_wday) ){
+                            # skip this task altogether
+                            print "Skip task $task, wrong day: $X_mday req: $rday\n";
+                            next;
+                        }
+                    }
+                    if($rmonth ne "*"){
+                        if(int($rmonth) != int($X_mon) ){
+                            # skip this task altogether
+                            print "Skipping task $task, wrong month: $X_mday/$X_mon: req: $rday/$rmonth\n";
+                            next;
+                        }
+                    }
+        
+                    $commando = $command{$t};
+                    if($dependencies{$t} ne ""){
+                        $_ = $dependencies{$t};
+                        @lod = split;
+                        $nMissing = 0;
+                        foreach $_ (@lod){
+                            $done = "$dailyDir/$_.Done";
+                            if(!-e $done){
+                                if($trace eq "on"){
+                                    print "$t: waiting for $_ to be done.\n";
+                                }
+                #                $canRun = "H";
+                                $nMissing++;
+                            } else {
+                                if($trace eq "on" ){
+                                    if($ntimes == 0){ print "$t: $_ COMPLETED.\n"; }
+                                }
+                            }
+                        }
+                    } else {
+                        $nMissing = 0;
+                    }
+                
+                    if($nMissing > 0){
+                        print "Dependencies not completed yet\n";
+                        # We can not proceed on this task, not all its dependencies
+                        # have finished... Next!!
+                        next; 
+                    }
+        
+                    # this needs daily dependency, as queueJobs are different for
+                    # every day
+                    $tjid = $queueJob{$dask};
+                    if($twt{$dask} eq ""){
+                        $twt{$dask} = $walltime{$t};
+                    }
+        
+                    if($mxm{$dask} eq ""){
+                        $mxm{$dask} = $maxmem{$t};
+                    }
+        
+        
+                    # We start counting the times a task has been submitted
+                    # We use this number to pass the runid parameter to runPipeline
+                    # in case we do generate different control files for different
+                    # executions.
+                    if($nexec{$dask} eq ""){
+                        $nexec{$dask} = 0;
+                    }
+        #            if($ntimes == 0){
+        #                $effWT = $twt{$dask};
+        #                $effMM = $mxm{$dask};
+        #            }
+                    
+                    if($runningJobs{$tjid} == 1){
+                        # Happy, the job is running we need to do nothing... Next!
+                        print "$t running in parallel: $tjid\n";
+                        $jobRunning = 1;
+                        next;
+                    } elsif($notInParallel{$dask} == 1){
+                        print "$t running as a child in parallel: $dask\n";
+                        $jobRunning = 1;
+                        next;
+                    } else {
+                        $jobRunning = 0;
+                        print "job not found in the list of jobs\n";
+                        # job is neither running nor completed... in limbo
+                        # it could be the first time the manager is launched, in
+                        # which case, we need to proceed 
+                        if($ntimes > 0){
+                           $jn = $qjn{$dask};
+                           $memfail = 0;
+                           $wallfail = 0;
+                           # let's locate its error file and try to infer what went
+                           # wrong...
+                           foreach $_ (@errorFiles){
+                               if(/$jn/){
+                                   print "elog: $jn $_\n";
+                                   open(EF, "<$_");
+                                   undef @efile;
+                                   while(<EF>){
+                                       chop;
+                                       if(/$memoryFail/){
+                                           print "$_\n";
+                                           $memfail ++;
+                                       }
+                                       push @efile, $_;
+                                   }
+                                   close(EF);
+                                   last;
+                               }
+                           }
+                           # we need to figure out what's gone wrong.
+                           if($memfail > 0){
+                               $oldMM = $mxm{$dask};
+                               $mxm{$dask} = int($mxm{$dask} * 1.5);
+                               $effMM = $mxm{$dask};
+           #                    $effMM = $mxm{$dask} * (1 + $nexec{$dask} * 0.5);
+                               print "Increasing memory from $oldMM to $effMM\n";
+                           }
+                           if($wallfail > 0){
+                               $oldWT = $twt{$dask};
+           #                    $effWT = $twt{$dask} * (1 + $nexec{$dask} * 0.5);
+                               $twt{$dask} = $twt{$dask} * 1.5;
+                               $effWT = $twt{$dask};
+                               print "Increasing wallTime from $oldWT to $effWT\n";
+                           }
+                        
+                            if($memfail == 0 and $wallfail == 0){
+                                print "UNEXPECTED SITUATION. error file follows:\n";
+                                foreach $_ (@efile){
+                                    print "$_\n";
+                                }
+                                print "About to resubmit. error file follows:\n";
+        #                        $totalPendingTasks--;
+        #                        $nPending{$dateToProcess}--;
+        #                        next;
+                            }
+                        }
+        
+                    }
+            
+                    if(-e $taskRunning){
+                        # we know that the job associated to this task is not running,
+                        # the task didn't leave a DONE tracer either
+                        # In this scenario, we must re-launch
+                    } elsif(!-e $taskRunning or -e $taskFailed){
+                        $taskStatus .= "S";
+                        # we must relaunch as well
+            #            next;
+                    }
+        
+                    if(-e $taskFailed){
+                        # the task failed...
+                        if( $taskFails{$dask} > $maxFails ){
+                            # number of fails exceeded
+                            $taskHasFailed{$dask} = 1;
+                            # we need to mark tasks which depended on this one
+                            # as failed as well, as they will never be completed!
+                            $nActiveTasks{$t}--;
+                            $_ = $dependOnMe{$t};
+                            @onMe = split;
+                            for $_ (@onMe){
+                                $dusk = "${_}$dateToProcess";
+                                print "Marking $dusk as unfinishable\n";
+                                $taskHasFailed{$dusk} = 1;
+                                $nActiveTasks{$_}--;
+                            }
+                        } else {
+                            $taskFails{$dask}++;
+                        }
+                    }
+        
+                    if($defs{$commando} ne ""){
+                        $commando = $defs{$commando};
+                    }
+        #            print "\nCOMMANDO  = ", $commando;
+                    $commando =~ s/DATE/$DATE/g;
+        #            print "\nCOMMANDO2  = ", $commando;
+                    if( $nActiveTasks{$t} >= $atMost{$t} ){
+                        # we can not launch this task, it exceeds max number
+                        # allowed
+                        print "Task $t $dask waiting for room to run\n";
+                        next;
+                    }
+                    if($commando =~ /runPipeline/){
+        #                print "PLP: $fullRunPipeline\n";
+                        $commando =~ s/^runPipeline/$fullRunPipeline/;
+                        $_ = $commando;
+        #                print "\nCOMMANDO3  = ", $commando, "\n";;
+                        @cparts = split;
+                        $laDate = pop(@cparts);
+                        $pname = pop(@cparts);
+                        $_ = $pname;
+                        if(/^\//){
+                            $dailyPl = $_;
+                        } else {
+                            $pldir = "$topDir/pipelines/$pname";
+                            if(!-e $pldir){
+                                system("mkdir -p -m 775 $pldir");
+                            }
+                            $dailyPl = "$topDir/pipelines/$pname/$pname.main";
+            #                $pldir = "$pipelinesDir/$pname";
+            #                $dailyPl = "$pipelinesDir/$pname/$pname.main";
+            #                if(!-e $dailyPl){
+            #                    system("touch $dailyPl");
+            #                }
+                        }
+        
+                        $runId = sprintf("-runid=r%03d", $nexec{$dask}+ 1);
+                        $effWT = $twt{$dask};
+                        $effMM = $mxm{$dask};
+                        if($addXdim == 1){
+                            $addec = "$xDimName=\"$xd\"";
+                        } else {
+                            $addec = "";
+                        }
+                        if($extraVar{$t} ne "none"){
+                            $addec .= " $extraVar{$t}=\"$txd\"";
+                        }
+                        $suffix = "-exec -walltime=$effWT $ttracers -maxmem=$effMM -slave $runId";
+                        $commando = "@cparts $dailyPl $laDate $addec $suffix";
+        
+        #                print "dailyPl  = $dailyPl\n";
+        #                print "COMMANDO4  = ", $commando, "\n";
+        #                print "$taskStatus $t \@ $timo | $commando | $tusk\n";
+        
+                        if(-e $dailyPl){
+                            if($dummyRun == 0){
+                                $processingOutput = `$commando`;
+                                $nActiveTasks{$t}++;
+                                $nexec{$dask}++;
+                                print "Launched $t\n$commando\n$processingOutput\n";
+            # can we associate one or more jobIDs with this task at this point?
+            # Split processingOutput with \n, then examine each component
+            # for the pattern JOB=. Extract from that line just the numeric
+            # part. Assign the jobsIds to a string of jobIDs.
+                                if($site eq "UOL"){
+                                    @jobids = split(/\n/, $processingOutput);
+                                    $jobsline = "";
+                                    foreach $_ (@jobids){
+                                        if(/JOB=/){
+                                            $_ =~ s/JOB=//g;
+                                        # this is how it works in ALICE
+                                            $jobsline = $_;
+                                        }
+                                    }
+
+                                    @jparts = split(/\./,$jobsline);
+                                    if($jobsline eq ""){
+                                        $notInParallel{$dask} = 1;
+                                    } else {
+                                        $queueJob{$dask} = $jobsline;
+                                        $qjn{$dask} = $jparts[0];
+                                        print "Jobs for $dask: $jobsline $jparts[0]\n";
+                                    }
+                                } elsif($site eq "CEMS"){
+                                    $_ = $processingOutput;
+                                    @jobids = split(/[<>]/);
+                                    $jid = $jobids[1];
+
+                                    $qjn{$dask} = $jid;
+                                    $queueJob{$dask} = $jid;
+                                    print "JOBID\@CEMS = $jid\n";
+                                }
+                            } else {
+                                print "test-Launch $t\n$commando\n";
+                            }
+            
+            
+                        }
+            
+            
+                    }
+                }
+            }
+            print "N-pending tasks for $dateToProcess: $nPending{$dateToProcess}\n";    
+            if($nPending{$dateToProcess} == 0){
+                $ltime = localtime;
+                open(L, ">>$dailyTracer");
+                print L "$DATE $host $pid $initialTime FINISHED $ltime\n";
+                close(L);
+            }
+    
+        } # end of @LISTOFDATES loop
+    }
+    if($dummyRun == 1){
+        last;
+    }
+    
+    print "TOTAL-pending tasks: $totalPendingTasks\n";    
+    if($totalPendingTasks == 0){
+#        $ltime = localtime;
+#        open(L, ">>$dailyTracer");
+#        print L "$DATE $host $pid $initialTime FINISHED $ltime\n";
+#        close(L);
+        last;
+    } else {
+        #Sleep for a while (5 minutes to start with)
+#        sleep(300);
+#        sleep(120);
+        sleep(120);
+    }
+
+    $ntimes++;
+}
+
+# do some housekeeping: clean any .o and .e files created by this run
+chdir($dotOdotE);
+
+exit;
+
+sub iDepend(){
+    my ($d, $lodep) = @_;
+    my $_ = $lodep;
+    my @parts = split;
+#    print "$d : $lodep\n";
+    foreach $p (@parts){
+        push @iDependOn, $p;
+        &iDepend($p, $dependencies{$p});
+    }
+}
+
+sub time_hms2dec(){
+    my $tstring = @_[0];
+    my $result;
+    if($tstring eq "*" or $tstring eq "any"){
+        $result = "any";
+    } else {
+        if(length($tstring) != 4){
+            $result = "fail";
+        } else {
+            my $min = substr($tstring,2,2);
+            my $hour = substr($tstring,0,2);
+            $result = $hour + $min/60.;
+        }
+    }
+    return $result;
+}
+
+
+
+
+
+
+sub timestamp(){
+    ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) =
+                                                localtime(time);
+    $D_mon++;
+    $D_year += 1900;
+    $ts = sprintf("%02d/%02d/$D_year %02d:%02d:%02d", $D_mday, $D_mon, $D_hour, $D_min, $D_sec);
+}
+
+sub create_td_sample_and_readme(){
+    print <<"EXPLANATION";
+The file sample.td was created.
+
+Create as many task-description files as your processing needs. Once all
+those files are ready run $me -createStubs
+
+$me -createStubs will evaluate on the fly if you are missing some files
+(of tasks mentioned but not yet defined), and if so, it will create new .td files for you to complete.
+
+Once all the .td files are defined, the stubs will be created. You should redidrect in that case the output of ...
+EXPLANATION
+
+    &make_td_file("sample");
+
+}
+
+sub makeStubs(){
+    open (TDS, "ls *.td |");
+    while(<TDS>){
+        chop;
+        $module = $_;
+        if($_ eq "sample.td"){ next; }
+        push @tdfiles, $_;
+        $filesProvided{$_} = 1;
+        $defs = "d_$_";
+        open(T, "<$_");
+        while(<T>){
+            chop;
+            if(/^#/ or !/=/){
+                next;
+            }
+            ($key, $value) = split(/=/,$_,2);
+            $$defs{lc($key)} = $value;
+        }
+        close(T);
+        $_ = $$defs{"dependencies"};
+#        print "$module depends on $_\n";
+        @dependencies = split;
+        foreach $d (@dependencies){
+            $filesNeeded{"$d.td"} = 1;
+        }
+    }
+    close(TDS);
+
+    $pending = 0;
+    foreach $d (keys %filesNeeded){
+        if($filesProvided{$d} eq ""){
+            print "Missing dependency $d making it\n";
+            $pending++;
+            $d =~ s/\.td//;
+            &make_td_file($d);
+        }
+    }
+
+    if($pending > 0){
+        print "Edit the newly created files and try again.\n";
+        die "Only when every dependency is resolved, creation of the stubs will be done\n";
+    }
+
+    foreach $_ (@tdfiles){
+        $defs = "d_$_";  # this includes the ".td"
+
+        $module = $$defs{"name"};
+        $dep = $$defs{"dependencies"};
+        $trest = $$defs{"timerestrictions"};
+        if($trest eq ""){ $trest = "*/*/*/*"; }
+        $mmem = $$defs{"maxmemory"};
+        if($mmem eq ""){ $mmem = "9998"; }
+        $wall = $$defs{"maxwalltime"};
+        if($wall eq ""){ $wall = "1.1"; }
+        $lt = $$defs{"type"};
+        if($lt eq "GT_PROCESSING"){
+            $type = "proc";
+        } elsif($lt eq "GT_DATA_VALIDATION"){
+            $type = "dval";
+        } elsif($lt eq "FTP_DATA_ACQUISITION"){
+            $type = "aftp";
+        } elsif($lt eq "DATA_AVAILABILITY"){
+            $type = "isin";
+        } elsif($lt eq "OTHER"){
+            $type = "udef";
+        }
+        print "$module $trest $wall $mmem ${type}_$module $dep\n";
+        print "${type}_$module = runPipeline DATE $module\n\n";
+    }
+
+
+}
+
+sub make_td_file(){
+    my $name = @_[0];
+
+    open(S, ">${name}.td");
+    $today = localtime;
+    print S <<"SAMPLE_FILE";
+# This file is provided as an example of what a task-description file
+# should contain. 
+#
+#
+# Creation date: $today
+#
+# Not all fields are mandatory, some depend on the nature of the task defined.
+# All fields are defined as key/value pairs. Order is irrelevant.
+#
+
+NAME=$name
+
+# The field dependencies may be left empty or not appear at all, indicating
+# that the module can be run regardless of which tasks have been run
+# before, in other words, the module has no dependencies
+
+DEPENDENCIES=
+
+# The timeRestrictions field indicates whether this module needs to be run
+# after a certain time, or on a specific day of the month, a specific month
+# or specific week.
+# The syntax is : HHMM/dayOfMonth/month/dayOfWeek
+# */*/*/* indicates no restrictions at all
+# if left undefined, mode */*/*/* will be assumed
+TIMERESTRICTIONS=
+
+# The max-memory field indicates the maximum memory needed by this module
+# when run using the queue management system. Its value is ALWAYS in
+# megabytes.
+# No default value is assumed
+# Even small tasks may need several gigabytes of memory. I nominally use 9999
+MAXMEMORY=9999
+
+# The maximum execution time to request when running the process in
+# parallel expressed in decimal hours. The dedicated software will convert
+# this value to HH:MM:SS or HH:MM format according to the site. You don't
+# have to worry about this.
+# Default value of 1 may be well too short for some processors
+MAXWALLTIME=1
+
+
+# The type of processing module you want to define.
+# A few pre-defined types exist, but you can define it as "other" to define
+# things your way.
+# Each task type requires its own definitions
+# Currently available types: GT_PROCESSING, FTP_DATA_ACQUISITION,
+# GT_DATA_VALIDATION, DATA_AVAILABILITY, OTHER 
+#
+# Uncomment the correct one
+#TYPE=GT_PROCESSING
+#TYPE=GT_DATA_VALIDATION
+#TYPE=FTP_DATA_ACQUISITION
+#TYPE=DATA_AVAILABILITY
+#TYPE=OTHER
+
+
+# The following information is necessary if type == GT_PROCESSING:
+#----------------------------------------------------------------
+
+# PROCESSOR should point to an executable file, normally one of the GT
+# processors created from Fortran code.
+# Just write the processor name, its full path will be created/defined on
+# the fly
+# eg: processor=gt_mdb_processor_ss.exe
+# If you need another kind of processing piece,  define your type as OTHER
+PROCESSOR=
+
+
+# TEMPLATE_CONTROL_FILE is the file used to feed initial parameters to the
+# PROCESSOR. There is a set of these files in
+# $site_path/SOFTWARE/FORTRAN/INTERNAL_CODE/CTL_FILES_TEMPLATES/$site/
+# where $site_path and $site are site specific codes.
+# When only a file name or a relative path appears, it will be assumed to be
+# in one of these directories
+# A full path will use exactly that file
+TEMPLATE_CONTROL_FILE=control-file-name
+
+
+# The following information is necessary if type == GT_DATA_VALIDATION
+#----------------------------------------------------------------
+
+# the base path is something like /data/atsr/SEVIRI or /data/atsr/MODIS
+BASE_PATH=
+# The product code is for example : GT_MOG_2P, GT_MYG_3U, etc.
+PRODUCT_CODE=<valid GT product code>
+
+
+# The following information is necessary if type == FTP_DATA_ACQUISITION
+#----------------------------------------------------------------
+
+# These definitions are used by the generic ftp data retriever. The first 3
+# are obvious.
+FTP_SITE=
+USERNAME=
+PASSWORD=
+
+# refers to the path where to locate the data at the server level
+REMOTE_PATH=
+
+# refers to the path where to download the data into the local server
+LOCAL_PATH=
+
+# PROJECT is used to tell the downloader the kind of path structure (both
+# local and remote) to use during the transmission.
+# Currently valid projects are: ims4k modis, ostia, surfrad, uscrn. Others
+# will be defined in the future (like arm)
+PROJECT=
+
+# This is MODIS specifc and refers to the PRODUCT used in the ladsweb nasa
+# site, it could be any of a long list. We normally use:
+# MOD03 MOD11_L2 MOD021KM MOD35_L2
+# MYD03 MYD11_L2 MYD021KM MYD35_L2
+PRODUCT=
+
+# The following information is necessary if type == DATA_AVAILABILITY
+#----------------------------------------------------------------
+
+# the base path is something like /data/atsr/SEVIRI or /data/atsr/MODIS
+BASE_PATH=
+
+# The product code is for example : GT_MOG_2P, GT_MYG_3U, etc.
+PRODUCT_CODE=<valid GT product code>
+# In case the presence of a directory is not enough, and another piece of
+# software "marks" the directory as fully downloaded by creating a
+# tracer-file, this is the file name to use. eg: all-data-in
+TRACER_FILE=
+
+# A word on data downloading:
+# It is not possible to fully parallelise data downloading for extended
+# periods (missions for instance). It may be necessary to let a downloading
+# daemon to manage the downloads, and in that scenario, the daemon should
+# mark the data directories as "available for processing" in order to let
+# the task-manager to start processing as soon as data are available.
+
+# low volume downloads (like the ones in one-day-processing scenarios) can
+# be handled by the task-manager itself.
+# stub
+#
+
+SAMPLE_FILE
+close(S);
+}
+
+

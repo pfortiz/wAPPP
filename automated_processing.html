@@ -1,0 +1,499 @@
+<html>
+<head>
+<title>Automated processing guideline</title>
+</head>
+<body>
+<center> <h1>Automated Processing for GlobTemperature</h1> </center>
+
+<a href="#intro">Introduction</a> <br>
+
+
+<a href="#ap-tools">List of Automated Processing (AP) "tools"</a> <br>
+
+<a href="#Proc-package-def">A processing package</a> <br>
+
+<a href="#RP-dates">AP date specification</a><br>
+
+<a href="#creating-PP">Creating a Processing Package</a> <br>
+
+<a href="#RP-predefVars">AP_runPipeline predefined variables:</a>
+
+<h2 name="intro">Introduction to <b>wAPPP</b></h2>
+
+The scripts part of  the <b>Workflows for Autonomous Parallel data
+Processing Pipelines</b> (wAPPP).  package  were designed to automate data
+processing as much as possible, from the data-acquisition phase through
+several levels of processing and quality control to data-export for data
+normally spanning a long period of time, from months to years. <p>
+
+The main aspect of this approach is to make the processing "granular", and
+the most appropriate granule for GT is a single day.  We then ignore the
+time component and concentrate in the design of the processing needed for
+just one day.<p>
+
+Tools have been designed to work under this scenario, and
+it is only when the processing needs to be performed that we instruct them
+to cover a period of time (from the command line).<p>
+
+The main objective of wAPPP  is to take full advantage of the parallel
+engines we have access to: alice, CEMS, sending individual tasks to
+different nodes when applicable.
+
+The old way of doing things:
+
+<ul>
+<li> Do some processing involving a long period of time, months to years</li>
+
+<li> Acquire all the data</li>
+
+<li> Then, double (triple) check that all data is in. </li>
+
+<li> Examine the log files and check that individual acquisition tasks
+completed correctly, resubmit when fails have occurred.</li>
+
+<li> Launch a processing step involving the whole period of time.</li>
+
+<li> Examine the log files and check that individual processing tasks
+completed correctly and resubmit then fails have occurred.</li>
+
+<li> Repeat these steps for other processing steps.</li>
+
+<li> Once all processing tasks have been completed, double check that
+everything was processed as expected.</li>
+
+<li> Export the products of these processing tasks to external servers.</li>
+
+</ul>
+
+wAPPP way of doing things involves running the same steps with three main
+differences:
+
+<ol>
+<li> The launch of procedures is software controlled.</li>
+
+<li> Processing is done in a modular basis, and as soon as one task is
+completed, tasks which depended on it are launched.</li>
+
+<li> Verification that each task concluded correctly is done without human
+intervention.
+</ol>
+
+<center>
+<img src="classic-v-wapp.png">
+</center>
+
+As the new approach does not need to wait that all days have been processed
+to the same level, the dead time is minimised and whole procedures can
+finish in fraction of the time it took following the previous methods.
+
+
+<h2 name="Proc-package-def">Automated Data Processing Workflows</h2>
+
+An <b>wAPPP workflow</b> should be viewed as a set of
+tasks which need to be performed and forms a well defined "package", or projcet.
+For instance, processing MODIS data to produce a level 3 product, or
+running some data quality control tool on data related to a mission are examples of data
+processing workflows.<p>
+
+A brief description of what a data processing workflow (DPW).
+<ul>
+<li> A DPW can have as many tasks as necessary.</li>
+
+<li> The tasks for a DPW are defined in a special file (a task-manager file or tm-file), where properties of the tasks to run are defined.</li>
+
+<li> AP_task-manager requires the tm-file as well as the dates for which the DPW tasks need to be applied.</li> 
+
+<li> Each task is self-contained and is executed by AP_runPipeline.</li>
+
+<li>Tasks are defined generically, regardless of the range of dates they will be applied to.</li>
+
+<li> Users can impose restrictions as to when tasks can be run, time of
+day, day of month, month, day of week.</li>
+
+<li> Tasks are assigned maxMemory and wallTime in case they get submitted
+to the grid engine.</li>
+
+<li> It is possible to limit the number of parallel processes used for a
+given task.<br>
+
+Limiting the number parallel executions of a given task is advisable
+for data transfers or if the parallel disk system would collapse if all
+tasks were executed at the same time. </li>
+
+<li> The task manager provides a way to associate other variables (usually spatial variables) to all tasks in a workflow or to individual tasks. A task to analyse in-situ data to be applied to a large number of ground stations may use this feature, and processes will be launched to analyse all stations in all the dates covered.</li>
+
+<li> Tasks may have dependencies on another tasks. This means that if a
+task depends on the successful completion of another, it will only be
+executed when all the tasks it depends on have completed.</li>
+
+<li> If a task fails a finite number of times, it is declared "dead", and
+all tasks which depend on it are marked as "dead" as well. </li>
+
+<li> Tasks with no dependencies will be executed right away, unless the
+number of parallel tasks of that kind is limited. </li>
+
+<li> Tasks run whenever possible, many times depending on the load of the
+parallel system, but no time is wasted if the task is completed at 2am and
+a new task, which depended on the previous one can be launched within
+minutes.</li>
+
+<li> Parallel systems are not perfect, and sometimes jobs are killed
+because of system issues, not because of the software running. wAPPP tools
+examine the log files describing these errors and tasks are resubmitted with
+increased values of requested resources like memory usage or maximum
+execution time. This process is repeated until the task completes
+correctly.</li>
+
+<li> Tasks from another project can be imported into a new project using the tools to build a workflow. More on
+that later. </li>
+</ul>
+
+<h2 name="ap-tools">List of Automated Processing (AP) tools</h2>
+
+The <b>Automated data processing workflow</b> is a toolkit. There is a core
+of tools designed to perform the most common tasks and to control the
+execution of them. Following is a description of the tools from the most
+relevant to the very specific ones. <p>
+
+When run without argument each of these tools produce a usage message.
+
+All these tools are located in one directory:
+$(SITE_PATH)/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING<br>
+SITE_PATH can be /data/atsr if working in Alice or 
+/group_we...CEMSpath...
+
+<dl>
+
+<dt><b>AP_processing-daemon</b></dt>
+<dd> Is a tool designed to work as a daemon, running all the time which
+launches the <b>AP_task-manager</b> once a day. It is designed to handle
+data processing in near real time mode (NRT), <i>i.e.</i>, it processes one day
+at a time as close to the current date as the data producers release their
+data.<p>
+
+NRT processing is a low data volume processing regime. <p>
+
+<code>AP_processing-daemon tasks-description-file</code>
+</dd>
+
+<dt><b>AP_task-manager</b></dt>
+<dd> Is the tool in charge of launching and monitoring tasks. This tool
+gets its instructions from a file (a "tm-file") which contain the
+definition of the tasks to execute, any temporal restrictions to launch
+tasks, the HPC resources needed, the pipeline to execute and a list of
+tasks which need to be completed to run the task (dependencies).<p>
+
+A pipeline is what defines the "know-how" of a particular task and this is
+handled by the <b>AP_runPipeline</b> tool.<p>
+
+All the rules about running tasks described above are controlled by the
+task-manager.<p>
+
+<code>Usage:  AP_tasks-manager tasks-description-file date-string [extraDim=file-with-list-of-values]</code><p>
+
+The first argument is the tm-file, the second is a string containing the
+date (or range of dates) for which data will be analysed. There is a
+<a href="#RP-dates">dedicated section</a> to describe the various forms the
+date-string can take and how to take advantage of its features.<p>
+
+There is also a piece of software which invokes the same subroutine used by AP_task-manager and AP_runPipeline to get the dates. Try <b>test_dateString</b> with a given string to see the list of dates obtained.
+
+Note that both <b>AP_processing-daemon</b> and <b>AP_tasks-manager</b> use
+the same input file.<p>
+
+</dd>
+
+<dt><b>AP_runPipeline</b></dt>
+<dd>It is the tool which applies all the knowledge of what to do in each
+task. The previous tools are totally generic, you could be doing LST
+data processing,  Supernovae search data processing, or running a sequence
+of simulations, they don't care.<p>
+
+Each pipeline encapsulates a number of procedures which are part of the
+whole workflow, and each pipeline defined need to be carefully constructed
+and tested before it is given to the task-manager tools.<p>
+
+The most common kind of tasks (pipelines) are:<br>
+<ul>
+<li><b>dlftp-: Data download</b> normally using ftp from external sites</li>
+
+<li><b>ulftp-: Data upload</b> normally using ftp to external sites</li>
+
+<li><b>rsync-: Data transfer</b> upload or download using 'rsync'. This requires
+that the user have accounts in the local and remote site.</li>
+
+<li><b>proc-:Data processing </b> usually involving code (processors) written in
+Fortran or other fast language. In GT, this is the bread and butter. It is
+possible (and advisable) to let these pipelines examine whether the
+processor conclude successfully and communicate this fact, and if it has
+not concluded successfully, also communicate it.</li>
+
+<li><b>dqc-: Data quality assurance (or QC)</b> to assure that the products of
+the processing satisfy pre-defined quality standards.</li>
+
+<li><b>dxst-: Presence of data</b> to make sure that data are available to be used
+by a given processor. There is no point in running a processing pipeline if
+vital data are not present.</li>
+
+<li> Of course it is possible for users to define their own pipelines
+(<b>uc-</b>), which may contain a number of verification steps as
+well </ul>
+
+<pre>Usage:  AP_runPipeline pipe-file date-string [varName=varValue] [-exec] [-slave]</pre><p>
+
+AP_runpipeline has the capacity to submit jobs to the grid engine, and most
+tasks can then be submitted to individual nodes. Some tasks however, need
+to be executed from the login-nodes because of access limitations or
+because they are very short tasks and it makes no sense to submit them as parallel
+jobs, for instance, tasks which verify whether data is present in a
+directory.
+
+As AP_runpipeline is the tool at the core of wAPPP, it is described in
+details in <a href="#runPipeline">its own section</a>.
+</dd>
+</dl>
+
+The following two tools were created to assist users in the creation of
+workflows.
+
+<dl>
+<dt><b>AP_aurora</b></dt>
+<dd>If there is siri and there is alexa, well, wAPPP has "aurora", or the
+<b>AU</b>tomated p<b>RO</b>cessing <b>R</b>untime <b>A</b>ssistant. As its
+name suggests, AP_aurora can help users define their workflows in an
+assisted way, presenting a battery of questions, all fundamental to build a
+good workflow. AP_aurora, however, can also provide users with minimal
+information for them to build their projects independently.
+
+</dd>
+
+<dt><b>AP_assistant</b></dt>
+<dd> It is a tool also designed to assist in the creation of the workflow
+structure. AP_aurora makes use of AP_assistant, and in some modalities,
+users can invoke it directly with adequate arguments to complete several
+stages of the development. </dd>
+
+Examples of how to use these tools are given in the <a
+href="#firstWorkflow">How to create a workflow from scratch</a>.
+</dl>
+
+The following tools were created to be part of AP_runPipeline ancillary
+tools. Each tool does a specific set of jobs and has a way to communicate
+with AP_pipeline based on what they print to STDOUT.  These tools can be
+written in any language. Most of them are written in Perl, but some are
+written in python because they have to run in several sites, and sometimes
+the deployment of perl is not uniform across sites. At least that is the
+case for ftp functionalities.<p>
+
+AP_runPipeline really doesn't care in which language these tools are
+written. Users could enhance this toolkit writing tools in any other
+language, like ruby, shellscript, C, C++, Java, etc.<p>
+
+Although the tools are invoked by AP_runPipeline, they are all runable from
+the command line, and it would be good if you familiarize with them at some
+point. They may become handy as standalone tools as well. I've used some
+constantly.<p>
+
+
+<dt><b>AP_contentRetriever</b></dt>
+<dd>
+
+It examines the content of a directory. It lists the content of a directory
+if only the first argument is given. If a pattern is provided, it lists
+only the filenames where that pattern is present. <p>
+If the name of a file is given (the data tracer) it prints '1' if the file
+exists or '0' otherwise.<p>
+If '-count' is given, instead of a list of files it presents the total
+number of files or the number of files which contain a pattern.<p>
+
+This is one of the tools which can be used standalone. <p>
+
+<pre>Usage:  AP_contentRetriever path=path [fp=pattern dt=data_tracer [-count]]</pre>
+<p>
+
+</dd>
+
+<dt><b>AP_createTM_pipeFiles</b></dt>
+<dd>
+
+This tool is invoked by <b>AP_assistant</b>, and it can be invoked
+by the user for only a very specific purpose: to create two workflow
+files. These files are then used by <b>AP_runPipeline</b> and contain all
+the instructions and knowledge to perform specific tasks.<p>
+
+The input files used as arguments to <b>AP_createTM_pipelines</b> are
+initially created from predefined tasks by <b>AP_assistant</b>. These files
+are editable by users and more instructions that the default ones can be
+added for <b>AP_runPipeline</b> to execute. 
+
+<pre>Usage: AP_createTM_pipeFiles parameters-file local-tasks parallel-tasks walltime maxMem</pre> <p> 
+
+walltime is expressed in decimal hours and maxMem is expressed in Megabytes.
+<p>
+</dd>
+
+<dt><b>AP_examineGT_LOG</b></dt>
+<dd>
+
+</dd>
+
+<dt><b>AP_extractProcessedTimestamps</b></dt>
+<dd>
+
+</dd>
+
+<dt><b>AP_ftpDownload.py</b></dt>
+<dd>
+
+</dd>
+
+<dt><b>AP_ftpUpload.py</b></dt>
+<dd>
+
+</dd>
+
+<dt><b>AP_fvFtpDownload.py</b></dt>
+<dd>
+
+</dd>
+
+<dt><b>AP_getAvailableTimestamp</b></dt>
+<dd>
+
+</dd>
+
+<dt><b>AP_locateUnprocessed</b></dt>
+<dd>
+
+</dd>
+
+<dt><b>AP_makeSingleCtlFile</b></dt>
+<dd>
+
+</dd>
+
+<dt><b>AP_spotUnbalancedAUX_LST</b></dt>
+<dd>
+
+</dd>
+
+<dt><b>AP_verifyGtProducts.py</b></dt>
+<dd>
+
+</dd>
+
+<dt><b>AP_xwrapper</b></dt>
+<dd>
+
+</dd>
+
+</dl>
+
+<h2 name="firstWorkflow">How to create a workflow from scratch</h2>
+
+Although workflows are quite complex and a lot of information needs to go
+there, wAPPP offers a relatively simple way to create your first workflow.
+<p>
+
+Previous to launch any command, it would be good if you write down in a
+piece of papers just the name of the tasks your workflow will contain and
+for each task, on which other task they depend. A processing task will not
+work if the data-downloading task has not been completed, right?  <p>
+
+It is quite possible that some logical considerations may require you to
+alter the number of tasks defined in the first draft.<p>
+
+A task should be something quite specific
+
+
+
+
+<h2 name="runPipeline">AP_runPipeline features</h2>
+
+<h3 name="RP-predefVars">AP_runPipeline predefined variables:</h3>
+
+<b>Yeh shall not use any of these patterns inside your own definitions within
+runPipeline files</b>. Of course you can use them to form paths or other elements.
+
+<ul> 
+<li> <b>YYY</b>: The year being processed when in daily mode  </li>
+<li> <b>Y2D</b>: The last two digits of the year: 2017 -> 17 </li>
+<li> <b>MMM</b>: The month being processed when in daily mode: june=6  </li>
+<li> <b>SMM</b>: The month being processed when in daily mod: june=06   </li>
+<li> <b>DDD</b>: The day being processed when in daily mode, 1 = 1  </li>
+<li> <b>SDD</b>: The year being processed when in daily mode, 1 = 01  </li>
+<li> <b>SDOY</b>: The day of the year zero-padded to 3 digits (e.g., 032 = Feb 1)</li>
+<li> <b>IDOY</b>: The day of the year as an integer (e.g., 32 = Feb 1)</li>
+
+
+</ul>
+
+<h2 name="RP-dates">AP date specification</h2>
+
+<b>wAPPP</b> uses a special notation to handle dates as the objective is to
+be able to express ranges of dates which will be used to trigger tasks.
+
+The following is a list of valid notations:
+
+<table>
+<tr><td>String </td><td> results </td></tr>
+<tr><td>2001-01-01:2010-03-31</td><td>Lists all days between 2001-01-01 and
+2010-03-31</td></tr>
+<tr><td>2001-01-01:2010-03-31/dt=1month</td><td>Lists all months between
+2001-01-01 and 2010-03-31</td></tr>
+<tr><td>2001-01-01:2010-03-31/dt=1year</td><td>Lists all years  between
+2001-01-01 and 2010-03-31</td></tr>
+<tr><td>2,5,6@2002:2007</td><td>Lists all days for the months of February,
+May and June of the years 2002 to 2007</td></tr>
+<tr><td>2,5,6@2002:2007/dt=1month</td><td>Lists all months of February,
+May and June of the years 2002 to 2007</td></tr>
+<tr><td></td><td></td></tr>
+</table>
+
+The point is that it is possible to specify the time resolution, which by
+default it is 1 day by using the <b>dt=</b> option<p>
+
+Use <b>test_timex.pl</b> (part of the wAPPP distribution) to test different
+variations of how to write dates.<p>
+
+<h2 name="controlFiles">Altering template control files.</h2>
+
+Control files in GlobTemperature contain the information required by a
+given processor to do its task. Setting them up correctly is vital and it
+is not a task to be overlooked.<p>
+
+Collections of template control files can be found both at CEMS and Alice
+and any other site GT code runs.<p>
+
+Processing tasks in wAPPP context require you to provide a template control
+file to be incorporated inside the project's structure, usually inside the
+"pipelines/task-name" directory. That control file now is yours to modify,
+particularly paths and whatever piece of information is necessary to use as
+a true template for this wAPPP task.<p>
+
+The template file will then be used to generate the necessary template
+files for a given day, station, or whatever the task is concerned about.<p>
+
+<b>AP_makeSingleCtlFile</b> and <b>AP_flexibleMakeCtlFile</b> are tools to
+help you use your template file and produce new control files with
+appropriate values, particularly for the dates. Any parameter in the
+control that needs change but applies to all elements in the pipeline
+should be changed in the template control file instead.<p>
+
+Before running your pipelines, please do make sure that the control files
+created are exactly how they are supposed to be. For that, run any of the
+tools mentioned above from the command line and double and triple check
+that everything is correct.<p>
+
+To do so, I usually do:<p>
+<pre>
+AP_<whatever>CtlFile template_ctl_file [arguments] > ~/newCtl.cf
+diff template_ctl_file ~/newCtls.cf
+</pre>
+
+The differences should tell you what has been changed.<p>
+
+<h2 name="RP-dates">Data transfers <span text.color="red">blues</span></h2>
+
+</body>
+</html>

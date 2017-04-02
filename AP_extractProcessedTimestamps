@@ -1,0 +1,61 @@
+#!/usr/bin/perl
+
+# script to extract information about what has been written in given log file.
+#
+# The keyword to look for is 'written' (ignore case). But, it can be
+# changed by an option in the command line
+#
+# The output will be 
+# column 1: harmonised timestamp
+# column 2 (and following) : files produced
+#
+#
+# Usage: AP_extractProcessedTimestamps logFile [pattern]
+#
+# Author: Patricio F. Ortiz
+
+
+@parts = split(/\//, $0);
+$me = pop(@parts);
+if($#ARGV < 0){
+    die "Usage:  $me logFile [pattern]\n";
+}
+$logFile = shift(@ARGV);
+$pattern = shift(@ARGV);
+if($pattern eq ""){
+    $pattern = "written";
+}
+
+if(!-e $logFile){
+    print "-1\n";
+    exit;
+}
+
+open (S, "<$logFile");
+while(<S>){
+    chop;
+    if(/$pattern/i){ 
+        @parts = split;
+        $ptime = pop(@parts);
+        $pdate = pop(@parts);
+        $pdate = pop(@parts);
+        $keepGoing = 1;
+        while($keepGoing == 1){
+            $w = shift(@parts);
+            if($w eq "") {last; }
+            if($w =~/^\//){
+                last;
+            }
+        }
+        if($w ne ""){
+            @parts = split(/\//, $w);
+            $file = pop(@parts);
+            @parts = split(/-/, $file);
+#            $timeStamp = $parts[3];
+            $timeStamp = substr($file, 22,15);
+            print "$timeStamp $ptime $pdate $w\n";
+        }
+    }
+}
+close(S);
+

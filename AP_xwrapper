@@ -1,0 +1,24 @@
+#!/usr/bin/perl
+
+# This script encapsulates a command and submits it, followed by touching a
+# file provided as second argument
+#
+# 
+# Author: Patricio F. Ortiz
+# Date: March 22, 2017
+#
+
+
+my @parts = split(/\//, $0);
+my $me = pop(@parts);
+
+
+if($#ARGV < 1){
+    die "Usage: $me command-to-execute trace-file-to-touch\n";
+}
+
+$command = shift(@ARGV);
+$touchy = shift(@ARGV);
+
+system("$command >> /dev/null");
+system("touch $touchy");

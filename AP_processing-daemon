@@ -1,0 +1,256 @@
+#!/usr/bin/perl
+
+# A data processing daemon
+#
+# Author: Patricio F. Ortiz
+# Date: February 28, 2017
+#
+# The objective is to create a "generic" processing daemon 
+# capable of performing a series of tasks defined as having dependencies on
+# each others.
+#
+# This part of the daemon, now split into two components acts as a
+# metronome, keeping track of time and launching the task-oriented, daily
+# daemons if they have not been launched yet.
+#
+# It is possible that this daemon would do some extra housekeeping tasks to
+# be defined later on.
+#
+# This daemon will run indefinitely, quite likely sleeping for half an hour
+# or so.
+#
+# This daemon is part of a set with "process-daily-tasks"
+#
+
+use Time::Local;
+# no strict, I need black magic
+# use strict;
+
+# inclusions to deal with time functions. I need to know the number of days
+# in a calendar month, and that depends on whether the year is leap or normal
+#
+
+my $basePath;
+my %apDict;
+
+BEGIN{
+    sub getFromRc(){
+        my $file = @_[0];
+        my %rcDict;
+        open(F, "<$file");
+        while(<F>){
+            if(/^#/ or /^$/){ next; }
+            chop;
+            ($key, $value) = split(/=/,$_,2);
+            $rcDict{$key} = "$value";
+        }
+        close(F);
+        return %rcDict;
+    }
+
+    my $home = $ENV{HOME};
+    my $rcfile = "$home/.automatedProcessing";
+    if(!-e $rcfile){
+        die "Please run AP_assistant first\n";
+    }
+    %apDict = &getFromRc($rcfile);
+    $basePath = $apDict{"basePath"};
+}
+
+use lib "$basePath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
+
+#use timex qw(&isLeap &daysInMonth &daysInYear &listOfDates &datesBetween &segmentedDates);
+use ap_timex;
+
+$waitTime = 1800; # sleep time of 1/2 hour (30 minutes)
+
+
+my @monthsInWords = qw(nothing January February March April May June July August September October November December);
+
+my $scripto = $0;
+my @parts = split(/\//, $0);
+my $me = pop(@parts);
+if($#ARGV < 0){
+    print "$apDict{'site'} $apDict{'runPipelineExec'}\n";
+    die "Usage:  $me processing-file]\n\n";
+}
+
+$processingFile = shift(@ARGV);
+if(!-e $processingFile){
+    die "$processingFile does not exist. Dying...\n";
+}
+@pparts = split(/\//, $processingFile);
+$pipeName = pop(@pparts);
+
+
+# the expected structure of a processing file is as follows
+# Anything containing a '=' sign is taken as a key/value pair, for instance:
+# timeDelay=1
+#
+# These are the only elements this daemon takes from this file, 
+#
+# key/value pairs expected:
+# timeDelay=n-days
+# processDirectory=/path/to/the/top/directory, eg, /data/atsr/processGT_S3
+#
+# The other elements are handled by process-daily-tasks.
+#
+#
+
+# when trace = "on", a lot of debugging information is printed to stdout
+my $trace = "on";
+#my $trace = "off";
+
+open(P,"<$processingFile");
+while(<P>){
+    chop;
+    if(/^\s*#/ or $_ eq ""){ # nothing of true interest
+       next;
+    }
+    if(/=/){ # we found a definition worth putting in the dictionary
+        ($key, $value) = split(/=/,$_,2);
+        $key =~ s/^\s*//;
+        $key =~ s/\s*$//;
+        $value =~ s/^\s*//;
+        $value =~ s/\s*$//;
+        $defs{$key} = $value;
+    } elsif(/:/) { #task found
+        @parts = split;
+        $task = shift(@parts);
+        $task =~ s/:$//;
+        $timod = shift(@parts);
+        $xtime{$task} = &time_hms2dec($timod);
+        $piper = shift(@parts);
+        $command{$task} = $piper;
+        if($#parts < 0){
+            $dependencies{$task} = "INDIE";
+            push @independentTasks, $task;
+            $independentTask{$task} = 1;
+        } else {
+            $dependencies{$task} = "@parts";
+            push @dependentTasks, $task;
+        }
+        push @tasks, $task;
+    }
+}
+close(P);
+
+# all information is in. The daemon should be able to start working...
+
+if($trace eq "on"){
+    foreach $k (sort keys %defs){
+        $dk = $defs{$k};
+        print "$k >< $dk\n";
+    }
+}
+
+$topDir = $defs{"processingDir"};
+$timeDelay = $defs{"timeDelay"};
+$execsPath = $defs{"execsPath"};
+$pyexecsPath = $defs{"pythonExecsPath"};
+
+$processDailyTasks = "process-daily-tasks";
+$processDailyTasks = "tasks-manager";
+
+# Tasks and its dependencies should have the following structure:
+# taskid: time-to-trigger associated-pipeline dependencies
+#
+# ':' is mandatory in tasks
+#
+# time-to-trigger should be either "any" or HHMM  (of the current day)
+# if time-to-trigger is set, the task will not be run even if all its
+# dependencies are fulfilled.
+#
+# The logics of the tasks description is very much the logics of a
+# make-file. You build only when the dependencies are available
+#
+# blank lines and lines starting with a '#' will be ignored (as usual)
+#
+# I must be able to define the associated commands to given
+# associated-pipeline-tasks
+#
+# The name "associated-pipeline" is not totally accurate as it should not
+# be mandatory that the daemon spawns a full pipeline, it could be just one
+# command to issue which requires little information
+#
+# In the case of commands or pipelines there should be a way for the code
+# to flag when the operation was not successful, i.e., we need to create 
+# a "fail to complete" status and the daemon should recognise those to
+# perhaps re-submit a job until it completes successfully, this is
+# particularly important in case of the data-acquisition streams which may
+# fail because of servers being temporarily down, etc.
+#
+# Let's give this an initial try...
+# The daemon needs to be aware of where it has to work and where it will
+# fine the relevant information
+
+# these statements need to be located within the while (infinite) loop in
+# order to make the daemon aware of its current date
+
+$tracersDir = "$topDir/processingLogs";
+if(!-e $tracersDir){
+    system ("mkdir -p -m 775 $tracersDir");
+}
+
+while(){ # this is the infinite loopy
+
+    $currentTime = time;
+    $correctedTime = $currentTime - $timeDelay * 86400.;
+    my ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) =
+                                                    localtime($currentTime);
+    my ($C_sec,$C_min,$C_hour,$C_mday,$C_mon,$C_year,$C_wday,$C_yday,$C_isdst) =
+                                                    localtime($correctedTime);
+    $D_year += 1900; $D_mon += 1; $D_yday += 1;
+    $C_year += 1900; $C_mon += 1; $C_yday += 1;
+    $D_smon = sprintf("%02d", $D_mon);
+    $D_smday = sprintf("%02d", $D_mday);
+    $C_smon = sprintf("%02d", $C_mon);
+    $C_smday = sprintf("%02d", $C_mday);
+    $thms = sprintf("%02d%02d", $D_hour, $D_min);
+    $tod = &time_hms2dec($thms);
+    $dailyDir = "$topDir/$C_year/$C_smon/$C_smday";
+    $DATE = "${C_year}-${C_smon}-$C_smday";
+    if(!-e $dailyDir){
+        print "about to make $dailyDir\n";
+        system("mkdir -p -m 775 $dailyDir");
+    } else {
+        print "$dailyDir exists\n";
+    }
+    $dailyTracer = "$tracersDir/${DATE}_${pipeName}.log";
+    $dailyLogger = "$tracersDir/${DATE}_${pipeName}.dlog";
+    if(!-e $dailyTracer){
+        # Here is where we spawn the  other daemon for the corresponding
+        # date:
+        print "Submitted $processDailyTasks $processingFile $DATE > $dailyLogger \n";
+        system("$processDailyTasks $processingFile $DATE > $dailyLogger &");
+    } else {
+        print "Nothing to submit... yet\n";
+    }
+    
+    
+    sleep($waitTime);
+}
+
+
+exit;
+
+sub time_hms2dec(){
+    my $tstring = @_[0];
+    my $result;
+    if($tstring eq "any"){
+        $result = "any";
+    } else {
+        if(length($tstring) != 4){
+            $result = "fail";
+        } else {
+            my $min = substr($tstring,2,2);
+            my $hour = substr($tstring,0,2);
+            $result = $hour + $min/60.;
+        }
+    }
+    return $result;
+}
+
+
+
+

@@ -1,0 +1,53 @@
+#!/usr/bin/perl
+
+# script to explore a directory and find out if there are unbalanced pairs
+# of AUX LST files
+#
+
+# Example usage:
+# pickUnbalancedAUX_LST list-of-files GT_MOB_2P
+
+use strict;
+my @parts = split(/\//,$0);
+my $moi = pop(@parts);
+
+if($#ARGV < 0){
+   die "Usage:  $moi data-directory\n";
+} 
+
+my $dirName = shift (@ARGV);
+my @files;
+my %theFiles;
+if(!-e $dirName){
+    print "-1\n";
+    exit;
+}
+chdir($dirName);
+
+open (SC, "ls |");
+while(<SC>){
+#    print;
+    chop;
+    $theFiles{$_} = 1;
+}
+close(SC);
+
+my $balance = 1;
+my $key;
+foreach $_ (keys %theFiles){
+    $key = $_;
+    if(/AUX/){
+        $_ =~ s/_AUX_/_LST_/;
+        if($theFiles{$_} eq ""){
+            print "NO LST for $key\n";
+            $balance = 0;
+        }
+    } elsif(/LST/){
+        $_ =~ s/_LST_/_AUX_/;
+        if($theFiles{$_} eq ""){
+            print "NO AUX for $key\n";
+            $balance = 0;
+        }
+    }
+}
+print "$balance\n";

@@ -1,0 +1,272 @@
+#!/usr/bin/perl
+
+# Author: Patricio F. Ortiz
+#
+# This script aims to create just one control file (output to STDOUT) based
+# on a template control file and the date, both entered as arguments
+#
+# No attempt will be made to create any related structure.
+# This script is meant to be invoked by runPipeline
+#
+
+# Example usage: AP_agnosticCtlFileMake driverTemplate key_1=value ... [key_n=value] [files=files-to-process]
+#
+# where key_{i} is a pattern inside the control file to cause the first
+# field in the line it occurs to be replaced by the associated value
+#
+# The optional files-to-process provides a way to create a driver file with
+# a list of files to process instead of one in which every single file in
+# the day is processed, if applicable. Not all control files have this
+# feature implemented.
+
+use strict;
+#use String::Scanf
+(my $sec,my $min,my $hour,my $mday,my $mon,my $yyyy,my $wday,my $yday,my
+$isdst) = localtime();
+
+my $topPath = "/data/atsr";   #### SITE DEPENDENT
+
+
+my $uzer = $ENV{USER};
+my $cwd = `pwd`;
+chop($cwd);
+$yyyy += 1900;
+
+my $mes = sprintf("%02d", $mon+1);
+my $today = sprintf("%02d:%02d:%02d %02d/%02d/%02d", $hour, $min, $sec,
+$mday, $mes, $yyyy);
+#my $toMonth = "$mes/$yyyy";
+my $toMonth = localtime;
+
+my @pn = split(/\//, $0);
+my $me = pop(@pn);
+
+my $nargs = $#ARGV;
+if($nargs < 1){
+   die "Usage: $me template-file key1=value [...keyN=value] [xfiles=file-with-list-of-files-to-process]\n";
+} 
+
+my @daysInMonth = qw(31 28 31 30 31 30 31 31 30 31 30 31);
+
+my @parts;
+my $template = shift(@ARGV);
+my (%kypairs, $k, $v);
+my $listOfFiles;
+foreach $_ (@ARGV){
+    ($k, $v) = split(/=/, $_, 2);
+    if($k eq "xfiles"){
+        $listOfFiles = $v;
+    } else {
+        $kypairs{$k} = $v;
+    }
+}
+
+
+my @inputFiles;
+my $nInputFiles = 0;
+my $ifi;
+my $select_method = 0;
+my $replaceSelectMethod;
+if($listOfFiles ne ""){
+    if(!-e $listOfFiles){
+        print "non-existing list of files $listOfFiles. Quiting\n";
+        print "-1\n";
+        exit;
+    }
+    open(I, "<$listOfFiles");
+    while(<I>){
+        chop;
+        push @inputFiles, $_;
+    }
+    $nInputFiles = $#inputFiles + 1;
+    $select_method = 1;
+    close(I);
+    $replaceSelectMethod = 1;
+} else {
+    $replaceSelectMethod = 0;
+}
+
+my @patterns = keys %kypairs;
+
+#my ($year, $month, $day);
+#my ($year, $month, $day) = split(/-/, $date);
+#
+#my $smon = sprintf("%02d", $month);
+#my $sday = sprintf("%02d", $day);
+#
+#
+#my $YSEL = 1;
+#my $MSEL = 1;
+#my $DSEL = 1;
+#my $mode;
+#
+#if($day ne "") {
+#    $mode = "dly";
+#} elsif($month ne ""){
+#    $mode = "mly";
+#} else {
+#    $mode = "yly";
+#}
+#
+#if($mode eq "dly"){
+#} elsif($mode eq "mly"){
+#    $DSEL = 0;
+#} elsif($mode eq "yly"){
+#    $MSEL = 0;
+#    $DSEL = 0;
+#} elsif($mode eq "domly"){
+#    $MSEL = 0;
+#}
+
+if(!-e $template){
+    die "$template does not exist\n";
+}
+
+open(T, "<$template");
+my $mod_code;
+my $out_path;
+my @driverLines;
+my ($isIn, $p, @wds, $fw, $replaced, $w);
+while(<T>){
+    chop;
+    if(/DATE:/){
+        print "# DATE:     $toMonth\n";
+        push @driverLines, "# DATE:       $toMonth";
+#        push @driverLines, "# PROCESSOR:  $processor";
+    } elsif(/^#/){
+        print "$_\n";
+    } elsif(/AUTHORS:/){
+        print "# AUTHORS:     $0\n";
+        push @driverLines, "# AUTHORS:    $me";
+    } else {
+        $replaced = 0;
+        foreach $p (@patterns){
+            if(/$p/){
+                @wds = split;
+                $fw  = shift(@wds);
+                $fw = $kypairs{$p};
+                foreach $w (@wds){
+                    if($w eq $p){
+                        if(/^'/) { #  a quoted quantity
+                            print "'$fw' @wds\n";
+                        } else {
+                            print "$fw @wds\n";
+                        }
+                        $replaced = 1;
+                        last;
+                    }
+                }
+            }
+        }
+        if($replaced == 0){
+            print "$_\n";
+        }
+    }
+}
+
+exit;
+#while(<T>){
+#    chop;
+#    if(/DATE:/){
+##        print "# DATE:     $toMonth\n";
+#        push @driverLines, "# DATE:       $toMonth";
+##        push @driverLines, "# PROCESSOR:  $processor";
+#    } elsif(/AUTHORS:/){
+##        print "# AUTHORS:     $0\n";
+#        push @driverLines, "# AUTHORS:    $me";
+#    } elsif (/selected_year/){
+##        print "$year     ! selected_year\n";
+#        push @driverLines, "$year     ! selected_year";
+#    } elsif (/selected_month/){
+##        print "SEL_MON     ! selected_month\n";
+#        push @driverLines, "SEL_MON     ! selected_month";
+#    } elsif (/selected_day/){
+##        print "SEL_DAY     ! selected_day\n";
+#        push @driverLines, "SEL_DAY     ! selected_day";
+#    } elsif (/year_select/){
+##        print "$YSEL     ! year_select\n";
+#        push @driverLines, "$YSEL     ! year_select";
+#    } elsif (/month_select/){
+##        print "$MSEL     ! month_select\n";
+#        push @driverLines, "$MSEL     ! month_select";
+#    } elsif (/day_select/){
+##        print "$DSEL     ! day_select\n";
+#        push @driverLines, "$DSEL     ! day_select";
+##   I need methods to handle another kind of control file, the one with the
+##   initial and final dates, which is used in several places
+#    } elsif (/start_year/){
+#        push @driverLines, "$year     ! start_year";
+#    } elsif (/start_month/){
+#        push @driverLines, "SEL_MON     ! start_month";
+#    } elsif (/start_day/){
+#        push @driverLines, "SEL_DAY     ! start_day";
+#
+#    } elsif (/end_year/){
+#        push @driverLines, "$year     ! end_year";
+#    } elsif (/end_month/){
+#        push @driverLines, "SEL_MON   ! end_month";
+#    } elsif (/end_day/){
+#        push @driverLines, "SEL_DAY     ! end_day";
+#
+#
+#
+#    } elsif (/select_method/){
+#        if($replaceSelectMethod == 1){
+#            push @driverLines, "$select_method     ! (0 = read by date selection, 1 = read from >DATA)";
+#        } else {
+#            push @driverLines, $_;
+#        }
+#
+#    } elsif (/umber of .* to read/){
+##        print "$DSEL     ! day_select\n";
+#        push @driverLines, "$nInputFiles     ! number of files to read";
+#        foreach $ifi (@inputFiles){
+#            push @driverLines, "'$ifi'";
+#        }
+#        $isIn = 1;
+#        while($isIn == 1){
+#            $_ = <T>;
+#            if(!/\'/){ last; }
+#        }
+#        push @driverLines, "";
+#        push @driverLines, "";
+#    } elsif (/mod_code/){
+#        @parts = split;
+#        $mod_code = shift(@parts);
+#        $mod_code =~ s/'//g;
+#        $mod_code = lc($mod_code);
+#        push @driverLines, $_;
+##        print "$_\n";
+#    } elsif (/primary_sensor_name/){
+#        @parts = split;
+#        $mod_code = shift(@parts);
+#        $mod_code =~ s/'//g;
+#        $mod_code = lc($mod_code);
+##        print "$_\n";
+#        push @driverLines, $_;
+#    } elsif (/out_path/){
+#        @parts = split;
+#        $out_path = shift(@parts);
+#        $out_path =~ s/'//g;
+##        print "$_\n";
+#        push @driverLines, $_;
+#    } elsif (/mdb_path/){
+#        @parts = split;
+#        $out_path = shift(@parts);
+#        $out_path =~ s/'//g;
+##        print "$_\n";
+#        push @driverLines, $_;
+#    } else {
+##        print "$_\n";
+#        push @driverLines, $_;
+#    }
+#}
+#
+#foreach $_ (@driverLines){
+#    if(/SEL_MON/){ $_ =~ s/SEL_MON/$smon/; }
+#    if(/SEL_DAY/){ $_ =~ s/SEL_DAY/$sday/; }
+#    print "$_\n";
+#}
+#
+#exit;
+#

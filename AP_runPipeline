@@ -1,0 +1,2598 @@
+#!/usr/bin/perl
+
+# A pipeline processing script (daemon)
+# 
+# Author: Patricio F. Ortiz
+# Date: January 2017
+#
+# Version 2.0
+# Date:   March 6, 2017
+#
+# Getting rid of the first element of each task line, the "tag", as it
+# really can be discarded and the functionality it meant to provide can be
+# achieved in a different way.
+#
+# Tags were only used to group commands to be sent to the queue, but that
+# can be achieved using UNIX notation: use a semi-colon (;) to separate a
+# list of commands which need to go to the queue in sequence.
+#
+# Change applied, no major damage done
+# This code may go back to be called runPipeline
+#
+# ------------------------------------------------------------------
+#
+# The objective is to create a "generic" processing app (pipeliner)
+# capable of performing a series of steps of a processing, sending messages
+# when things do go to plan and communicating when the objective has been
+# achieved.
+#
+# A number of areas need to be defined in order for the daemon to
+# communicate with the different tasks in terms of their conclusion. A task
+# may be run only if previous steps have given it the green light. 
+# Shall these areas be unique? For instance, keep a PID driven directory
+# structure?
+#
+# Tasks already done shall never be repeated.
+#
+# There should be a modality in which the daemon tackles the processing of
+# one dataset only or if it could run many.
+#
+# I am more inclined to leave this daemon as a one dataset only, and create
+# a different daemon to decide when data are present and launch this one.
+#
+# Yes, the daemons monitoring presence of files are "watchdogs"
+#
+# This daemon could also be triggered by 'cron' if so needed.
+#
+# Some sort of agreement must exist as to how to support dates and how to
+# locate the resources, for instance the control files and where log files
+# go. It shall not be the task of this daemon to create control files, but
+# it should notify users if such files do not exist.
+#
+# The daemon shall also be able to verify the validity of its log files and
+# relaunch the files if they failes. It should also examine the system log
+# files for hints like hitting the wall-time. For that, the directory from
+# which a task is launched is critical.
+#
+# Will the daemon work on a daily basis? That is, give it a date and it
+# would do its thing? Probably, this is mostly how we work. However, it is
+# also possible that the daemon needs to run on a monthly basis, after all,
+# when we bring (rsync) products it is many times on a monthly basis.
+#
+# I will then modify the way the date is provided
+# Variables in the params file which need dates is to include substrings
+# for the following equivalences:
+# YYY year
+# Y2D year (last two digits)
+# MMM month     SMM   month paddded with a 0 if <10
+# DDD day       SDD   day paddded with a 0 if <10
+#
+# Notice that all substrings are 3 character ones.
+#
+# Shall the job files be created by the daemon? I do think so, after all,
+# the daily job file shall tell the system to write a nugget-file when the
+# processing has been done.
+#
+#
+# Usage: processd yyyy-mm[-dd] tasks-file control-parameters-file [-exec]
+#
+# the option -exec indicates that this code will run, otherwise it will run
+# in demo mode, not submitting anything
+#
+# the -topdir=/full/path option let users specify where they want the
+# results to go. If left uspecified, they will go to the value assigned in
+# this script to $topDir.
+
+#------------------------------------------------
+# Notes on Jan 15, 2017
+#
+# Variables to add (but expect them):
+# SITE    To indicate which notation to use for the parallel environment
+# if SITE is not specified, make an educated guess as to in which system
+# the code is running and assign SITE accordingly.
+#
+# Create directory "errors", and put true error messages there, not just in
+# the log file. Error-file shall be created only if needed.
+#
+# As it is possible to run whole pipelines in the nodes, create
+# parallel-no-wait operation. This operation should create a "VARIABLE" for
+# the tracing file (the one used to monitor whether the parallel operation
+# has finished). I'm thinking in cases where the data acquisition comes
+# from more than one place. One could launch the tasks in parallel, without
+# wainting on individual tasks to end, but use the 'await-for' task to wait
+# for whatenver number of tracers is necessary to use.
+#
+# It would be advisable if the pipeline traces the hostname from which it
+# is running (particularly usefule info if it is run from the nodes)
+#
+# I think implementing IF/ELSEIF/ELSE/ENDIF flow control is feasible, and
+# not necessary complicated, even if the statements are part of a loop
+#------------------------------------------------
+#
+# Jan 27, 2017
+# The big day for LSPT decision at university level...
+#
+# There is a need (real need) to have runPipeline handle LISTS and possibly
+# dictionaries (hashes). This comes after my experiments having pipes
+# spawning pipes which spawned pipes got me into troubles... I run out of
+# PIDs.
+#
+# The idea then is that a yearly pipeline will have the capacity of
+# submitting all daily tasks (as whole tasks) to the parallel system. This
+# mean that the number of PIDs used should be much smaller than what it
+# currently is.
+#
+# Feb 05, 2017
+#
+# Adding the possibility of "long jumps" with two new features:
+# Label | milestone
+# goto | skipto
+# These features will be exactly like the old Go to's of earlier days and
+# are necessary as runPipeline does not support nested if statements.
+#
+#
+# Feb 07, 2017
+# Needs to handle range of dates, in the form yyyy[-mm[-dd]],yyyy[-mm[-dd]]
+# and create a list of dates for the corresponding interval. This will
+# avoid to restrict ourselves to "monthly", "yearly", "mission" kind of
+# pipelines. 
+# The array LISTOFDATES shall contain all dates between the first and last
+# dates provided.
+# This feature will accelerate parallelisation tremendously
+
+# February 9, 2017
+# change of approach needed for the dates.
+# The following scenarios should be accepted:
+# a) range of dates
+#    new syntax    date1:date2    following the notation of ranging in fortran
+# b) single date
+#    syntax        date1          This could lead to a list of dates if the
+#                                 date represents a month or a year. In the
+#                                 case of a single day, only one day will
+#                                 be put in the list
+# c) list of dates
+#    new syntax:   date1,date2,date3,date4...    These dates will be
+#                                 directly depossited in the appropriate
+#                                 list of dates 
+#
+# This approach simplifies the handling of dates tremendously
+#
+#
+# February 18, 2017
+#
+# As not everything goes according to Plan A, it is important to have a
+# Plan B at hand.
+# 
+# One of the most annoying things which can happen to a pipeline submitted
+# to the parallel system is that it reaches the walltime. As users, we have
+# no control on the load of a particular node at the time our tasks run,
+# hence, the tasks may reach the wall-time without completion.
+# It would be good to be able to re-submit the failing tasks with a larger
+# wall-time, or simply resubmit them automatically.
+#
+# Another issue is that sometimes we do underestimate the wall-time for a
+# given task, in which case it would be extremely useful to kill all the
+# jobs associated with this task and restart the task later.
+#
+# Finally, it would be good to be able to extract some stats respect the
+# tasks which have been submitted (the local tasks can be done by brute
+# force, opposite to the ones involving queue submission.
+#
+# In conclusion, it would be nice to have the following features:
+# (invoked in the same way as -exec):
+#
+# -qstat    provide useful statistical information about the task being run
+#
+# -qdelete  Delete all jobs associated with a task in one go
+#
+# -qresubmit=newWallTime   
+#           Identify the failing jobs and submit them again with
+#           the specified wall-time
+#
+#  And the reason to have this automated is that doing it by hand could be
+#  tremendously tedious and time consuming, and something which users
+#  should really not have to do.
+#
+#  runPipeline now leaves a trace in the history file, so it's easy to
+#  invoke it in any of the modes above mentioned from the same directory
+#  where the pipeline was launched in exec mode.
+#
+#  Additional information:
+#  - a pipeline's log file contains the command to launch a pipeline
+#  followed by a line with the jobId associated with the pipeline.
+#  Extracting this information may be system dependent (Alice v CEMS). 
+#  The ideal situation would be to have the jobId and the name of the
+#  qsub-file in one line. That's easy to do for the future.
+
+#  One thing that I need to improve is the path where things are put.
+#  I currently have a path for the processing pipeline-tag and one for the
+#  full pipeline with the pipeline-tag and the dates involved.
+#
+#  I think the place where the pipeline is launched should be the one
+#  associated with a range of dates, as that makes it quite unique, while
+#  the other one can be more vague or ambiguous.
+#
+#  I think I should implement these schemes in the old fashion mode, and
+#  later on migrate them to the new fashion, once all the currently running
+#  pipelines are completed.
+#
+#
+#  Action commands should only work if execute == 1 or execute == 0
+#
+#
+#  February 19, 2017
+#
+#  We need an more urgent action:
+#  -qHaltRestart
+#       we are having one or two pipelines which I gave too tigth a wall
+#       time, and many jobs have hit the wall (another one hit the wall..
+#       to the tune of "another bites the dust")
+#
+#       Although not all jobs are crashing, it would be wiser to increase
+#       the wall time for the rest of the jobs to run, removing both
+#       running and non-running from the queue.
+#
+#       Both the currently running and the ones which failed would need to
+#       be resubmitted.
+#
+#  -clean
+#       To remove all .e* and .o* files from the directories, as well as
+#       packing the qsub files into a tar-file. This is site dependent
+#       ALICE: *.e* *.o*
+#       CEMS: *.err  *.log
+#
+#   We also need users to specify wall-time values for the qresubmit option
+#
+#   
+#   February 26, 2017
+#
+#   The issue of determining whether a pipeline achieved its goals need to
+#   be addressed from a different point of view, not just from analysing
+#   the error files, which in some cases may be misleading
+#
+#   It is necessary to have an external tool to examine the presence of a
+#   successful log file for a given step of a task BEFORE the task is
+#   committed to the parallel system.
+#
+#   In ALICE, launching all dates involved in a batch may be very time
+#   consuming as very few jobs are run simultaneously (not the same at
+#   CEMS).
+#
+#   The idea then is to have a way in the from-to pipeline to verify
+#   whether the task to launched was launched already and whether all its
+#   steps were successful. The daily task (if launched) should take care of
+#   not performing the already done processing steps.
+#   
+#   Rather than creating yet another "tool", I think examineGT_LOG should
+#   be able to recognize the presence of a .gz file (the sign that a
+#   successful run has occurred) and/or to examine a log file for the DONE
+#   word, indicating that the processing was completed (regardless of its
+#   quality of results).
+#
+#   This implies the need for the from-to task to know how to form
+#   the log files in the same way that the daily task does. This, of
+#   course, is the responsibility of the user or the scripts generating the
+#   daily/from-to pair of tasks
+#
+#   runPipeline should provide YYY MMM SMM DDD and SDD as valid patterns
+#   when running in from-to mode so that those values can be used by tasks
+#   to generate valid log-file paths.
+#
+# March 10, 2017
+#   A few optional arguments added to allow RP to run as a "slave" to
+#   tasks-manager, allowing for command line definition of walltime,
+#   overriding what it is in its control files, ditto for max-memory
+#   The -slave mode forces RP to leave its log files in the current working
+#   directory (determined by what TM does) as well as the launching place
+#   of the queue submission files.
+#   In fact, I think it would be good to leave the qsub files in the same
+#   directory, as they can be regenerated or easily found if a job needs to
+#   be re-run, but above all, it will allow TM to do a deep clean at the
+#   end of each run. Perhaps I would separate dotEdotO into two
+#   directories: grid-logs and RP-files, as grid-logs will be used more often
+#
+#   TM could take care of actually deleting job files of successfully
+#   completed jobs on the spot, instead of leaving them to accumulate. right?
+#
+#   RP-files will contain the LOG file and the qsubs
+#
+
+#  March 30, 2017
+#  Adding the possibility to define variables in the command line in the
+#  form var-name=var-value.
+#  Each var-name found in the command line will be understood and
+#  transformed into a "variable", and users should be able to use varName
+#  in their scripts and rp will translate that at run-time.
+
+
+
+use Time::Local;
+# no strict, I need black magic
+# use strict;
+
+# inclusions to deal with time functions. I need to know the number of days
+# in a calendar month, and that depends on whether the year is leap or normal
+#
+
+my $basePath;
+my %apDict;
+
+BEGIN{
+    sub getFromRc(){
+        my $file = @_[0];
+        my %rcDict;
+        open(F, "<$file");
+        while(<F>){
+            if(/^#/ or /^$/){ next; }
+            chop;
+            ($key, $value) = split(/=/,$_,2);
+            $rcDict{$key} = "$value";
+        }
+        close(F);
+        return %rcDict;
+    }
+    my $home = $ENV{HOME};
+    my $rcfile = "$home/.automatedProcessing";
+    if(!-e $rcfile){
+        die "Please run AP_assistant to initialise the AUTOMATED_PROCESSING package\n\n";
+    }
+    %apDict = &getFromRc($rcfile);
+    $basePath = $apDict{"basePath"};
+}
+
+#use timex qw(&dateToDoy &isLeap &daysInMonth &daysInYear &listOfDates &datesBetween &segmentedDates);
+
+use lib "$basePath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
+use ap_timex;
+
+$waitTime = 60; # sleep time of 1 minute
+
+
+my @monthsInWords = qw(nothing January February March April May June July August September October November December);
+
+my $scripto = $0;
+my @parts = split(/\//, $0);
+my $me = pop(@parts);
+if($#ARGV < 1){
+    print "$apDict{'site'} $apDict{'runPipelinePath'}\n";
+    die "Usage:  $me pipe-file date-string [varName=varValue] [-exec] [-slave]\n\n";
+}
+
+my @argos;
+foreach $_ (@ARGV){ push @argos, $_; }
+
+#mandatory arguments
+my $pipelineFile = shift(@ARGV);
+my $date = shift(@ARGV);
+
+#my $paramFile = shift(@ARGV);
+
+$execute = 0;
+
+# this is the default top directory which can be overridden using the
+# -topDir= argument
+$defTopDir = "/data/atsr/processings";
+$topDir = $defTopDir;
+
+
+#my $exec = shift(@ARGV);
+$cwd = `pwd`;
+chop ($cwd);
+
+my %valComp = (
+    "eq" => 1,
+    "ne" => 1,
+    "lt" => 1,
+    "le" => 1,
+    "ge" => 1,
+    "gt" => 1,
+    "exist" => 1,
+#    "!exist" => 1,
+    "noexist" => 1,
+    "existnot" => 1,
+    "missing" => 1,
+    "empty" => 1,
+    "!empty" => 1,
+    "in" => 1,
+    "not-in" => 1,
+    );
+
+$QDELETE   =  2;
+$QSTATS    =  4;
+$QRESUBMIT =  8;
+$QCLEAN    = 16;
+$slave = 0;
+$versyntax = 0;
+
+foreach $_ (@ARGV){
+    ($aname, $avalue) = split(/=/);
+#    print STDERR "examining arg: $_   $aname, $avalue\n";
+    
+    if($aname eq "-exec"){
+        $execute = 1;
+        $ts = &timestamp();
+        open(H, ">>history");
+        print H "$ts $me @argos\n";
+        close(H);
+    } elsif(/=/){ # definition of a variable, which will be transformed
+                  #to UPPER case.
+                  # We should do the same as when assigning a variable
+        ($vname, $vvalue) = split(/=/);
+        $dvars{$vname} = 1;
+        $$vname = $vvalue;
+
+        # this works, and it gives runPipeline a much broader scope than
+        # handling just time, as these variables can be used to list
+        # stations of a given network, (longitude/latitude) pairs, spatial
+        # indices like H17V12, etc.  There is really no restriction as to
+        # what it is possible to achieve with these extra variables
+
+
+    } elsif(lc($aname) eq "-walltime"){
+        $clWalltime = $avalue;
+        if($clWalltime eq ""){
+            die "Invalid walltime, use -walltime=walltime_in_hours\n";
+        }
+    } elsif(lc($aname) eq "-maxmem"){
+        $clmaxmem = $avalue;
+        $clmaxmem =~ s/[A-z]//;
+        if($clmaxmem eq ""){
+            die "Invalid max-memory-size, use -maxmem=memory-size-in-MB\n";
+        }
+    } elsif(lc($aname) eq "-qdelete" or lc($aname) eq "-qdel"){
+        $execute = $QDELETE;
+        $earlyMessage = "About to delete queue related jobs";
+    } elsif(lc($aname) eq "-qstats"){
+        $execute = $QSTATS;
+        $earlyMessage = "About to extract some queue stats";
+    } elsif(lc($aname) eq "-clean"){
+        $execute = $QCLEAN;
+    } elsif(lc($aname) eq "-runid"){
+        $clrunid = $avalue;
+    } elsif(lc($aname) eq "-qresubmit"){
+        $execute = $QRESUBMIT;
+        $clWalltime = $avalue;
+        if($clWalltime eq ""){
+            die "Invalid walltime, use -qresubmit=walltime_in_hours\n";
+        }
+        $earlyMessage = "About to resubmit failed jobs with $clWalltime hours";
+    } elsif(lc($aname) eq "-slave"){
+        $slave = 1;
+    } elsif(lc($aname) eq "-verify"){
+        $versyntax = 1;
+    } elsif(lc($aname) eq "-help"){
+        &showHelp();
+        exit;
+#    } elsif(lc($aname) eq "-topdir"){
+#        if($avalue =~/^\./){
+#            $avalue =~ s/^\./$cwd/;
+#        }
+#        $topDir = $avalue;
+#        print "Using user-defined top directory: $topDir\n";
+    } else {  # unknown option. Stop execution
+        print "Unknown option: $aname. Quiting\n";
+        exit;
+    }
+}
+
+#we need to define a tree of directories. 
+#topDir is system dependent:
+
+$nTasks = 0;
+
+$pid = $$;
+
+# let's see what goes on with the date
+# is : present in the date string?
+$_ = $date;
+if(/\@/){        # we've got a segmented range of dates
+    print STDERR "segmented dates: $date\n";
+    @LISTOFDATES = &segmentedDates($date, "-");
+    $ndates = $#LISTOFDATES + 1;
+    print STDERR "N-segmented-dates $ndates\n";
+    $dlists{"LISTOFDATES"} = 1;
+    $mode = "segmented-dates";
+    $date1 = $LISTOFDATES[0];
+    $date1 =~ s/[^0-9]//g;
+    $date2 = $LISTOFDATES[$#LISTOFDATES];
+    $date2 =~ s/[^0-9]//g;
+#    my $idate;
+#    for $idate (@LISTOFDATES){ print "$idate\n"; }
+#    exit;
+} elsif(/:/){        # we've got a full range of dates
+    ($firstDate, $lastDate ) = split(/:/,$date);
+    print STDERR "$date, $firstDate, $lastDate\n";
+    if($firstDate ne "" and $lastDate ne ""){
+        @LISTOFDATES = &datesBetween($firstDate, $lastDate, "-");
+        $ndates = $#LISTOFDATES + 1;
+        print STDERR "N-datesBetween: $ndates\n";
+        $dlists{"LISTOFDATES"} = 1;
+        $prefix = "";
+        $date1 = $LISTOFDATES[0];
+        $date1 =~ s/[^0-9]//g;
+        $date2 = $LISTOFDATES[$#LISTOFDATES];
+        $date2 =~ s/[^0-9]//g;
+        $mode = "date-range";
+    }  else {
+        die "Invalid date format. For a range specify:   date1:date2\n";
+    }
+
+} elsif(/,/){   # we've got a list of user defined dates
+    @LISTOFDATES = split(/,/);
+    $ndates = $#LISTOFDATES + 1;
+    print STDERR "user provided dates: @LISTOFDATES\n";
+    print STDERR "N-user-provided-dates $ndates\n";
+    $dlists{"LISTOFDATES"} = 1;
+    $mode = "userdef-dates";
+    $date1 = $LISTOFDATES[0];
+    $date1 =~ s/[^0-9]//g;
+    $date2 = $LISTOFDATES[$#LISTOFDATES];
+    $date2 =~ s/[^0-9]//g;
+    $prefix = "";
+} else {        # it is a simple date, but it could involve a range of dates
+                # as well
+    @pdate = split(/-/);
+    $year  = shift(@pdate);
+    $month = shift(@pdate);
+    $day   = shift(@pdate);
+    
+    $imonth = int($month);
+    $lmonth = $monthsInWords[$imonth];
+    $iday = int($day);
+    $smonth = sprintf("%02d", $imonth);
+    $sday = sprintf("%02d", $iday);
+    $prefix = "";
+    
+    if($day eq "" and $month eq ""){
+        $mode = "yearly";
+        $prefix = "/tasks";
+        @LISTOFDATES = &datesBetween("$year-1-1", "$year-12-31", "-");
+        print STDERR "dates in year $year AD: @LISTOFDATES\n";
+        $dlists{"LISTOFDATES"} = 1;
+    } elsif ( $day eq "" and $month ne ""){
+        $DAYSINMONTH = &daysInMonth($year, $imonth);
+        $dvars{"DAYSINMONTH"} = 1;
+        @LISTOFDATES = &datesBetween("$year-$month-1", "$year-$month2-$DAYSINMONTH", "-");
+        print STDERR "dates in month $year/$month AD: @LISTOFDATES\n";
+        $dlists{"LISTOFDATES"} = 1;
+        $mode = "monthly";
+        $prefix = "/tasks";
+    } else {
+        $mode = "daily";
+        $prefix = "";
+        push @LISTOFDATES, $_;
+        $dlists{"LISTOFDATES"} = 1;
+        $DAYOFYEAR = &dateToDoy($year, $month, $day);
+        $dvars{"DAYOFYEAR"} = 1;
+        $SDOY = $DAYOFYEAR;
+        $dvars{"SDOY"} = 1;
+        $IDOY = int($DAYOFYEAR);
+        $dvars{"IDOY"} = 1;
+    }
+    
+
+    $DAYSINMONTH            = &daysInMonth($year, $imonth);
+    $DAYSINYEAR             = &daysInYear($year);
+    $dvars{"DAYSINYEAR"}    = 1;
+}
+
+$y2d = substr($year,2,2);
+
+foreach $_ (@LISTOFDATES){
+    ($tyear, $tmonth, $tday) = split(/-/);
+    $listofyears{$tyear} = 1;
+    $listofmonths{"${tyear}-${tmonth}"} = 1;
+}
+@LISTOFYEARS            = sort keys %listofyears;
+@LISTOFMONTHS           = sort keys %listofmonths;
+
+#print "LOY: @LISTOFYEARS\n";
+#print "LOM: @LISTOFMONTHS\n";
+
+$dlists{"LISTOFYEARS"}  = 1;
+$dlists{"LISTOFMONTHS"} = 1;
+
+@zeitu = time;
+$zeit = localtime();
+
+print STDERR "Date: $mode $year $month $day DIM: $DAYSINMONTH MND: $lmonth\n";
+
+if(!-e $pipelineFile){
+    die "$pipelineFile does not exist. Nicht hier.\n";
+}
+
+
+#extract TAG only
+open(P, "<$pipelineFile");
+while(<P>){
+    chop;
+    if(/#/){ next; }
+    ($key, $eq, $val)  = split;
+    if($key eq "TAG"){
+        $$key = $val;
+        last;
+    }
+}
+close(P);
+if($TAG eq ""){
+    $TAG = "pid-$$";
+}
+
+
+# some disposable files go to scratch
+$topDir .= "/$TAG";
+#$scratch = "$topDir/scratch";
+
+# files to submit jobs go to parallel
+#$parallel = "$topDir/parallel";
+#if(!-e $parallel){ system("mkdir -p -m 775 $parallel"); }
+
+
+
+# Before submitting anythin, this script changes directory to $launchpad
+#$launchpad = "$topDir/launchpad";
+#if(!-e $launchpad){ system("mkdir -p -m 775 $launchpad"); }
+
+# short logs of the executions will be kept
+#$logs = "$topDir/logs";
+#if(!-e $logs){ system("mkdir -p -m 775 $logs"); }
+
+# fails of the executions will be kept
+#$fails = "$topDir/fails";
+#if(!-e $fails){ system("mkdir -p -m 775 $fails"); }
+
+$timeMode = "";
+if($mode eq "daily"){
+    $procedureId =  "${TAG}-sd-${year}-${smonth}-$sday";
+    $dateTag = "${year}-${smonth}-$sday";
+    $datePath = "$year/$smonth/$sday";
+    $timeMode = "daily";
+} elsif($mode eq "monthly"){
+    $procedureId =  "${TAG}-sm-${year}-$smonth";
+    $datePath = "$year/$smonth";
+    $timeMode = "date-range";
+} elsif($mode eq "date-range"){
+    $procedureId =  "${TAG}-dr-${date1}-to-${date2}";
+    $datePath = "timeIntervals";
+    $timeMode = "date-range";
+} elsif($mode eq "userdef-dates"){
+    $procedureId =  "${TAG}-ud-${date1}-to-${date2}";
+    $datePath = "timeIntervals";
+    $timeMode = "date-range";
+} elsif($mode eq "segmented-dates"){
+    $procedureId =  "${TAG}-sd-${date1}-to-${date2}";
+    $datePath = "timeIntervals";
+    $timeMode = "date-range";
+} else {
+    $procedureId =  "${TAG}-sy-$year";
+    $datePath = "$year";
+    $timeMode = "date-range";
+}
+
+$ts = &timestamp();
+
+$host = `hostname`;
+chop ($host);
+if($host =~/node/){
+    $site = "node";
+    $qsubmit = "disabled";
+} 
+
+
+# extract list of parameters
+open(P, "<$pipelineFile");
+while(<P>){
+    chop;
+    if(/#/){ next; }
+    if(length($_) == 0){ next;}
+    if(/--PARAMETERS/){ next; }
+    if(/--TASKS/){ last; }
+    ($key, $eq, $val)  = split;
+    $dvars{$key} = 1;
+    if($timeMode eq "daily" or $timeMode eq "date-range"){
+        $val =~ s/YYY/$year/g;
+        $val =~ s/Y2D/$y2d/g;
+        $val =~ s/SMM/$smonth/g;
+        $val =~ s/LMM/$lmonth/g;
+        $val =~ s/SDD/$sday/g;
+        $val =~ s/MMM/$imonth/g;
+        $val =~ s/DDD/$iday/g;
+        $val =~ s/DAYOFYEAR/$DAYOFYEAR/g;
+    }
+    foreach $ciave (keys %usedKeys){
+        $cont = $usedKeys{$ciave};
+        $val =~ s/$ciave/$cont/g;
+#        $$key = $val;
+    }
+    if(($timeMode eq "daily"  or $timeMode eq "date-range" ) and ($key=~/CONTROL/ or $key=~/LOGFILE/)){
+        $val =~ s/YYY/$year/g;
+        $val =~ s/Y2D/$y2d/g;
+        $val =~ s/SMM/$smonth/g;
+        $val =~ s/LMM/$lmonth/g;
+        $val =~ s/SDD/$sday/g;
+        $val =~ s/MMM/$imonth/g;
+        $val =~ s/DDD/$iday/g;
+        $val =~ s/DAYOFYEAR/$DAYOFYEAR/g;
+
+        $$key = $val;
+#        $$key = sprintf($val,$year, int($day), $month, $year);
+    } elsif($$key ne ""){
+        $val =~ s/$key/$$key/g;
+        $$key = $val;
+#        $$key = $val;
+#        print "+++ $val $$key\n";
+#        $$key = sprintf($val,$year, int($day), $month, $year);
+    } else {
+        $$key = $val;
+    }
+    push @params, $_;
+    $usedKeys{$key} = $$key;
+    push @varSummary, "$key :: $$key\n";
+#    print LOG "$key :: $$key\n";
+}
+
+# I was going to extract the user's name from the email using finger, but
+# finger is not always available and this would only work in local mode
+# For the time being, just extract the username
+if($NOTIFY ne ""){
+    ($USERNAME, $domain) = split(/@/, $NOTIFY);
+    $usedKeys{"USERNAME"} = $USERNAME;
+#    print "$USERNAME\n";
+}
+$dvars{"WALLTIME"} = 1;
+$dvars{"RUNID"} = 1;
+
+if($clrunid ne ""){
+#print "RUNID = $clrunid\n";
+    $RUNID = $clrunid;
+} else {
+    $RUNID = "r0";
+}
+
+$times = time;
+$times = "";
+#$RESULTS_PATH = $apDict{"runPipelinePath"};
+$RESULTS_PATH = $apDict{"historyPath"};
+$qsubmit = $apDict{"qsubmit"};
+$qtag = $apDict{"qtag"};
+$site = $apDict{"site"};
+$qdelete = $apDict{"qdelete"};
+$qquery = $apDict{"qquery"};
+
+if($slave == 0){
+    $resultsPath = "$RESULTS_PATH/$datePath$prefix";
+    $local = "$resultsPath/${procedureId}/local";
+    $queuePaths = "$resultsPath/${procedureId}";
+} else {
+    $resultsPath = "$cwd/RP-files";
+    $local = $resultsPath;
+    $queuePaths = $resultsPath;
+}
+# shell scripts for local jobs go to $local, created if needed only
+if(!-e $resultsPath){
+    system("mkdir -p -m 775 $resultsPath");
+}
+$scratch = "$resultsPath/${procedureId}/scratch";
+$scratchRoot = "$scratch/${procedureId}_$pid";
+$logFile = "$resultsPath/${procedureId}_$times.log";
+
+#exit;
+
+
+if($execute == $QDELETE){
+    print "$earlyMessage\n";
+    print "About to delete all jobs associated with this pipeline $site\n";
+    open (J, "<$logFile");
+    $njobs2kill = 0;
+    if($site eq "UOL"){
+        while(<J>){
+            if(/Submitted job/){
+                chop;
+                @jparts = split;
+                $job = pop(@jparts);
+                $job =~ s/\..*//;
+                print "$_\nJob to delete: $job\n";
+                $njobs2kill++;
+            }
+        }
+    } elsif($site eq "CEMS"){
+        while(<J>){
+            if(/Submitted job/){
+                chop;
+                @jparts = split;
+                $job = pop(@jparts);
+                $job =~ s/\..*//;
+                print "$_\nJob to delete: $job\n";
+                $njobs2kill++;
+            }
+        }
+    } else {
+    }
+    print "Number of jobs to kill: $njobs2kill\n";
+    exit;
+} elsif($execute == $QCLEAN){ # clean .o .e tracers and pack qsubs
+#    $queuePaths = "$resultsPath/${procedureId}";
+    print "Examining $queuePaths\n";
+    chdir($queuePaths);
+    system("find . -name \\*.qsub > qsubs.list");
+    system("tar -cjf qsubs.tar.bz2 -T qsubs.list");
+    open(S, "ls $queuePaths/*.qsub|");
+    while(<S>){ chop; unlink($_); }
+    close(S);
+
+    print "Examining $scratch\n";
+    open(S, "ls $scratch/*.e*|");
+    while(<S>){ chop; unlink($_); }
+    close(S);
+    open(S, "ls $scratch/*.o*|");
+    while(<S>){ chop; unlink($_); }
+    close(S);
+    open(S, "ls $scratch/tracer*|");
+    while(<S>){ chop; unlink($_); }
+    close(S);
+
+
+    exit;
+} elsif($execute == $QRESUBMIT){
+    print "$earlyMessage\n";
+    print "About to resubmit failed jobs. $site\n";
+
+    # we will log whatever we do in the log file, never erasing what has
+    # been done.
+    
+#    print "Scratch area: $scratch\n";
+#    This should be a subroutine, as it could be used in the QSTATS as
+#    well.
+
+    undef @withErrors;
+
+    &pipeStats($scratch);
+
+    # Time to do something
+    # We could start by unlinking the files without errors??
+    $nwithout = $#withoutErrors + 1;
+    print "Pipelines wihout errors: $nwithout\n";
+#    for($i = 0 ; $i < 10; $i++){ print "No error: $withoutErrors[$i]\n"; }
+    $nwith = $#withErrors + 1;
+    print "Pipelines wih errors: $nwith\n";
+#    for($i = 0 ; $i < 10; $i++){ print "With error: $withErrors[$i]\n"; }
+
+    if($site eq "CEMS"){
+        $walltime = &decHourToHHMM($clWalltime);
+        $wallPat = "walltime=";
+        $wallString = "#BS -l walltime=$walltime";
+        $submit = "bsub < ";
+    }   elsif($site eq "UOL"){
+        $walltime = &decHourToHHMMSS($clWalltime);
+        $wallPat = "walltime=";
+        $wallString = "#PBS -l walltime=$walltime";
+        $submit = "qsub ";
+    }
+
+    # time to reopen the LOG file, in append mode in order to append
+    # whatever we do in this phase.
+    
+    open (LOG, ">>$logFile");
+    foreach $src (@wallHits){
+        $dest = "${src}R";
+        if(-e $dest){
+            # nothing to do, a resubmission has been done for this pipeline
+            next;
+        }
+#        print "cp $src $dest\n";
+        open(IP, "<$src");
+        open(OP, ">$dest");
+        while(<IP>){
+            if(/$wallPat/){
+                chop;
+#                print "#--# $_\n";
+                print OP "$wallString\n";
+            } else {
+                print OP ;
+            }
+        }
+        close(OP);
+        close(IP);
+        # we are ready to submit this new queue file
+        # We shall use the same procedure we used in the normal pipeline to
+        # submit the job, with exactly the same entries to the LOG file
+        $ts = &timestamp();
+        print LOG "$ts qsub $dest\n";
+        $submitTime = time;
+        chdir($scratch);
+        open(SUB, "$submit $dest|");
+        $answer = "";
+        while(<SUB>){
+            chop;
+            $answer .= $_;
+        }
+        close(SUB);
+        $ts = &timestamp();
+        print "$ts Submitted job $answer\n";
+        print LOG "$ts $submitTime Submitted job $answer\n";
+    }
+    close(LOG);
+    print "Logfile is: $logFile\n";
+    exit;
+
+} elsif($execute == $QSTATS){
+    print "Scratch area: $scratch\n";
+
+    &pipeStats($scratch);
+
+    print "Nodes failing memory:\n";
+    foreach $_ (sort keys %failingMemoryNodes){
+        print "\t$_ $failingMemoryNodes{$_}\n";
+    }
+    print "Nodes failing wallTime\n";
+    foreach $_ (sort keys %failingWallNodes){
+        print "\t$_ $failingWallNodes{$_}\n";
+    }
+    print "Nodes generating Buses\n";
+    foreach $_ (sort keys %failingBusNodes){
+        print "\t$_ $failingBusNodes{$_}\n";
+    }
+
+    exit;
+}
+
+
+#print "Reached the Rubicon\n";
+#exit;
+
+$failsFile = "$resultsPath/${procedureId}_$times.fail";
+print STDERR "Logs to $logFile\n";      # line 2
+print STDERR "fails to $failsFile\n";   # line 3
+print STDERR "host = $host\n";         # line 4
+if($execute == 0){
+    *LOG = STDERR;
+    *FAIL = STDERR;
+} else {
+    # shall we open the log file in append mode to avoid that previous
+    # history be wiped? Let's give it a try...
+    open(LOG, ">>$logFile");
+}
+
+#exit;
+#close(P);
+
+print LOG "$ts TASKS to perform:\n";
+
+print LOG "$varSummary\n";
+
+
+#print LOG "$ts Running from site $site\n";
+print LOG "$ts Start for $procedureId\n\n";
+print LOG "$ts Running on $site host:  $host\n\n";
+print LOG "$ts task-file: $pipelineFile\n";
+print LOG "$ts TASKS parameters:\n";
+
+if($MEMORY ne ""){
+    $memory = $MEMORY;
+} else {
+    $memory = "8000";
+}
+
+if($clmaxmem ne ""){
+    $memory = int($clmaxmem);
+}
+
+
+$gmarker = "$scratch/tracer-${procedureId}-$host-$pid";
+# extract list of tasks. Sharp in a line marks it as a comment
+#open(T, "<$tasksFile");
+$pTID = "";
+$tt = 0;
+while(<P>){
+    chop;
+    if(/#/){ next; }
+    if(length($_) == 0){ next;}
+#    print STDERR ">>$_<\n";
+    if($timeMode eq "daily" or $timeMode eq "date-range"){
+        $_ =~ s/YYY/$year/g;
+        $_ =~ s/Y2D/$y2d/g;
+        $_ =~ s/SMM/$smonth/g;
+        $_ =~ s/LMM/$lmonth/g;
+        $_ =~ s/SDD/$sday/g;
+        $_ =~ s/MMM/$imonth/g;
+        $_ =~ s/DDD/$iday/g;
+        $val =~ s/DAYOFYEAR/$DAYOFYEAR/g;
+    }
+    @parts = split;
+#    push @tasks, $_;
+    $tid = sprintf("T%04d", $nTasks);
+    $tkind = shift(@parts);
+#    $tcriterion = shift(@parts);
+
+#    if($tid ne $pTID){
+
+        push @tasks, $tid;
+        $pTID = $tid;
+        $taskCrit = "TCRT$tid";
+        $taskComm = "TCMM$tid";
+        push @taskKind, $tkind;
+        push @taskFull, $_;
+        $nTasks++;
+
+#    }
+
+#    print LOG "$_\n";
+    $xph = "";
+    $isMandatory = 0;
+    for $p (@parts){
+        if($p eq ">"){
+            $xph .= "$p ";
+            if($isMandatory == 1){
+                die "< followed by >. Syntax error\n";
+                $isMandatory = 0;
+            }
+        } elsif( $p eq "<"){
+            $xph .= "$p ";
+            if( $mode eq "daily"){
+                $isMandatory = 1 ;
+            }
+        } elsif( $p =~/VERIFY/){
+            $p =~ s/VERIFY/${scratchRoot}_VY/;
+            $xph .= "$p ";
+            if($isMandatory == 1){
+                if(!-e $p){
+                    die "$p does not exist 1\n";
+                }
+                $isMandatory = 0;
+            }
+        } elsif( $p =~/PROCEDURE/){
+            $p =~ s/PROCEDURE/${procedureId}/;
+            $xph .= "$p ";
+            if($isMandatory == 1){
+                if(!-e $p){
+                    die "$p does not exist 2\n";
+                }
+                $isMandatory = 0;
+            }
+        } elsif( $p =~/AUXILIARY/){
+            $p =~ s/AUXILIARY/${scratchRoot}_AX/;
+            $xph .= "$p ";
+            if($isMandatory == 1){
+                if(!-e $p){
+                    die "$p does not exist 3\n";
+                }
+                $isMandatory = 0;
+            }
+        } elsif( $p eq "|"){
+            $xph .= "$p ";
+            
+        } elsif( $dvars{$p} ne "" and $p ne "WALLTIME"){
+                #  we don't replace walltime right away, that's left for
+                #  real-time replacement as walltime can be altered in
+                #  loops
+            $xph .= "$$p ";
+            if($isMandatory == 1){
+                if(!-e $$p){
+                    print LOG "$$p does not exist yet\n";
+                }
+                $isMandatory = 0;
+            }
+        } else {
+            $xph .= "$p ";
+            if($isMandatory == 1){
+                if(!-e $p){
+                    die "$p does not truly exist\n";
+                }
+                $isMandatory = 0;
+            }
+        }
+    }
+    $tphrase = join(" ", @parts);
+    push @$taskCrit, $tcriterion;
+    push @$taskComm, $xph;
+#    print "$tkind // $tcriterion // $tphrase\n";
+    $ts = &timestamp();
+#    print LOG "$ts $tt $tid $tkind $tcriterion $xph\n";
+    if($versyntax == 0){
+        print LOG "  $tid $tkind $tcriterion $xph\n";
+    }
+    $tt++;
+}
+#close(T);
+
+$nTasks = $#tasks + 1;
+
+#print "Number of tasks: $nTasks\n";
+
+# all tasks are active by default:
+$ts = &timestamp();
+print LOG "\n$ts EXECUTION OF TASKS next:\ntimeMode = $timeMode\n\n";
+$theIf = 0;
+$newIf = 0;
+undef @begelse;
+undef @endelse;
+undef @begthen;
+undef @endthen;
+print LOG "Ntasks: $nTasks\n\n";
+if($versyntax == 1){
+    print LOG "begin Syntax verification\n\n";
+}
+for( $tt = 0; $tt < $nTasks; $tt++){
+    $tid = $tasks[$tt];
+    $revTasks{$tid} = $tt;
+    $taskActive[$tt] = 1;
+    $taskCrit = "TCRT$tid";
+    $taskComm = "TCMM$tid";
+    $nSteps = $#$taskCrit + 1;
+    $marker = "${gmarker}_$tid";
+    $kind = lc($taskKind[$tt]);
+    $tSteps = "";
+    for ($t = 0; $t < $nSteps; $t++){
+        $comm  = $$taskComm[$t];
+        $tSteps .= "$comm\n";
+    }
+    chop($tSteps);
+    $_ = $tSteps;
+    @allwords = split;
+    @akargs = split; 
+    $firstWord = $allwords[0];
+    $lastWord = $allwords[$#allwords];
+#    if($versyntax == 0){
+#        print LOG "tracer: $kind $lastWord\n";
+#    }
+    $fullStatement = "$tid $kind @allwords";
+    if($kind eq "loop"){
+        $_ = $tSteps;
+        @akargs = split; 
+        undef %akeys;
+        foreach $a (@akargs){
+            ($cle,$val) = split(/=/,$a,2);
+            $akeys{lc($cle)} = $val;
+        }
+        $LOOPVAR = $akeys{"var"};
+    } elsif($kind eq "endloop" or $kind eq "pool"){
+        $eloop{$LOOPVAR} = $tt;
+    } elsif($kind eq "label" or $kind eq "milestone"){
+        $labelLocation{$firstWord} = $tt;
+    } elsif($kind eq "if" and lc($lastWord) eq "then"){ 
+        $compy = $valComp{$allwords[1]};
+        if($compy != 1){
+            print LOG "@allwords\n";
+            die "Invalid comparator in If statement: $compy\n";
+        }
+        $ifLevel = 0;
+        $newIf = 0;
+        $begthen[$newIf] = $tt+1;
+#        print STDERR "begthen $newIf  = $tt+1\n";
+
+        $marka = "$theIf-$newIf";
+        $laMarka{$fullStatement} = $marka;
+#        print STDERR "if newIf = $newIf theIf = $theIf $fullStatement $marka\n";
+    } elsif($kind eq "elseif" and lc($lastWord) eq "then"){ 
+#        print STDERR "elseif newIf = $newIf theIf = $theIf\n";
+        $compy = $valComp{$allwords[1]};
+        if($compy != 1){
+            die "Invalid comparator in If statement: $compy\n";
+        }
+        $endthen[$newIf] = $tt;
+        $begelse[$newIf] = $tt;
+        $newIf++;
+#        $begthen[$newIf] = $tt+1;
+#       We must start at the location of elsif, otherwise the condition is
+#       not verified
+        $begthen[$newIf] = $tt;
+
+        $marka = "$theIf-$newIf";
+        $laMarka{$fullStatement} = $marka;
+
+    } elsif($kind eq "else"){ 
+#        print STDERR "else newIf = $newIf theIf = $theIf\n";
+        $endthen[$newIf] = $tt;
+#       It is ok for else to be skept
+        $begelse[$newIf] = $tt+1;
+        $newIf++;
+    } elsif($kind eq "endif"){ 
+#        print STDERR "endif newIf = $newIf theIf = $theIf\n";
+        if($endthen[$newIf] eq ""){
+            $endthen[$newIf] = $tt;
+        }
+        for ($il = 0; $il < $newIf; $il++){
+            $endelse[$il] = $tt;
+        }
+        if($newIf == 0) { $newIf++};
+        for($q = 0; $q < $newIf; $q++){
+            $thenLines = "thenLines$theIf-$q";
+            $elseLines = "elseLines$theIf-$q";
+            $then1 = $begthen[$q];
+            $then2 = $endthen[$q];
+#            print STDERR "endif thens $then1, $then2\n";
+            for($i = $then1; $i < $then2; $i++){
+                push @$thenLines, $i;
+            }
+            $else1 = $begelse[$q];
+            $else2 = $endelse[$q];
+            if($else1 ne "" and $else2 ne ""){
+                for($i = $else1; $i <= $else2; $i++){
+                    push @$elseLines, $i;
+                }
+            } else {
+#                print STDERR "ELSE 1: $else1\n";
+#                print STDERR "ELSE 2: $else2\n";
+            }
+#            print STDERR "endif thenLines: $thenLines: @$thenLines\n";
+#            print STDERR "endif elseLines: $elseLines: @$elseLines\n";
+        }
+#        $newIf++;
+#        $lenIf[$theIf] = $newIf;
+        undef @begelse;
+        undef @endelse;
+        undef @begthen;
+        undef @endthen;
+        $theIf++;
+    }
+}
+
+
+# Now the fun begins... actually performing what has been requested
+#
+undef %revTasks;
+$tt = 0;
+$inLoop = 0;
+#print LOG "\n$ts tasks execution:\n";
+for( $tt = 0; $tt < $nTasks; $tt++){
+    $tid = $tasks[$tt];
+    $revTasks{$tid} = $tt;
+    # ignore tasks marked as not active by action=SKIP
+    if($taskActive[$tt] == 0){ next;}
+    $taskCrit = "TCRT$tid";
+    $taskComm = "TCMM$tid";
+    $nSteps = $#$taskCrit + 1;
+    $letemp = time;
+    $marker = "${gmarker}_$tid_$letemp";
+    $kind = lc($taskKind[$tt]);
+    $full = $taskFull[$tt];
+    $tSteps = "";
+    for ($t = 0; $t < $nSteps; $t++){
+        $comm  = $$taskComm[$t];
+        $tSteps .= "$comm\n";
+    }
+    chop($tSteps);
+    $_ = $tSteps;
+    @allwords = split;
+    @akargs = split; 
+    $lastWord = $allwords[$#allwords];
+    $fullStatement = "$tid $kind @allwords";
+#print STDERR "Revis FULLSTATEMENT: $fullStatement\n";
+    $marka = $laMarka{$fullStatement};
+    @aw = @allwords;
+    $firstWord = shift(@aw);
+    $tStepsShrt = "@aw";
+    if($inLoop == 1){
+        $tSteps =~ s/$LOOPVAR/$loopycounter/g;
+        $tStepsShrt =~ s/$LOOPVAR/$loopycounter/g;
+        if($lod == 1){
+            ($year, $smonth, $sday) = split(/-/, $loopycounter);
+            $month = int($smonth);
+            $day = int($sday);
+#            print STDERR "$tSteps\n";
+#            print STDERR "LOD-val: $loopycounter  $year $month $day\n";
+            $tSteps =~ s/YYY/$year/g;
+            $tStepsShrt =~ s/YYY/$year/g;
+            $tSteps =~ s/Y2D/$y2d/g;
+            $tStepsShrt =~ s/Y2D/$y2d/g;
+            $tSteps =~ s/SMM/$smonth/g;
+            $tStepsShrt =~ s/SMM/$smonth/g;
+            $tSteps =~ s/SDD/$sday/g;
+            $tStepsShrt =~ s/SDD/$sday/g;
+            $tSteps =~ s/MMM/$month/g;
+            $tStepsShrt =~ s/MMM/$month/g;
+            $tSteps =~ s/DDD/$day/g;
+            $tStepsShrt =~ s/DDD/$day/g;
+            $tSteps =~ s/DAYOFYEAR/$DAYOFYEAR/g;
+            $tStepsShrt =~ s/DAYOFYEAR/$DAYOFYEAR/g;
+#            print STDERR "NEW_TS: $tSteps\n";
+        }
+    }
+    
+    # this is not always necessary nor desirable here. It should be done on
+    # bsed on the $kind of operation. It does not applies to variables
+    # However, by defining an unchanged variable, that variable can then be
+    # used to replace known  values once arguments have been recovered
+    $originalSteps = $tSteps;
+    for $Lehrheft (keys %dvars){
+        $tSteps =~ s/$Lehrheft/$$Lehrheft/g;
+        $tStepsShrt =~ s/$Lehrheft/$$Lehrheft/g;
+    }
+#    for $Lehrheft (keys %dlists){
+#        $tSteps =~ s/$Lehrheft/$$Lehrheft/g;
+#        $tStepsShrt =~ s/$Lehrheft/$$Lehrheft/g;
+#    }
+    $ts = &timestamp();
+    $pass = 1;
+    $canExecute = 0;
+
+    if($kind eq "parallel" or $kind eq "qsub"){
+# taskd: QSUB|PARALLEL  mode command [; another-command] -  launches command(s) to the parallel system
+# taskd:         - if mode is WAIT the pipeline goes to next task when completed
+# taskd:         - if mode is NOWAIT the pipeline goes to next task immediately
+# taskd:           more than one command can be submitted to the queue.
+# taskd:           Split commands using a semicolon
+
+        # lauch the task, it means to form a submit file and submit it
+        # First command(s) is the one(s) in the task
+        # Second comand is the creation of the marker
+        # No decision is made with parallel tasks
+        
+        if($versyntax == 1){ next; }
+        if($qsubmit eq "disabled"){
+            print LOG "Sorry. Queue disabled in host $host\n";
+            next;
+        }
+        $stepo = $pass[$tt];
+        if(!-e $scratch && $slave == 0){
+            system("mkdir -p -m 775 $scratch");
+        }
+        if(!-e $queuePaths){ system("mkdir -p -m 775 $queuePaths"); } 
+        $queueFile = "${queuePaths}/q_${TAG}_${dateTag}${stepo}_$loopycounter.qsub";
+        open(B, ">$queueFile");
+        $submitTime = time;
+        $mode = uc($firstWord);
+
+        # these two lines allow to submit a number of commands to the queue
+        # in sequence by just separating it using a semicolon.
+        
+        @scparts = split(/;/, $tStepsShrt);
+        $tStepsShrt = join("\n",@scparts);
+
+        # We make command line walltime override the file walltime
+        if($clWalltime ne ""){
+            $qwalltime = $clWalltime;
+            print LOG "Using cl-walltime: $clWalltime instead of $WALLTIME\n";
+        } else {
+            $qwalltime = $WALLTIME;
+            print LOG "Using file-defined-walltime: $WALLTIME\n";
+        }
+
+        if($site eq "UOL"){
+            $walltime = &decHourToHHMMSS($qwalltime);
+            print LOG "$ts $qsubmit $queueFile\n";
+            print B <<"HEADER";
+#!/bin/bash
+#
+#$qtag -N ${procedureId}_$loopycounter
+#$qtag -l walltime=$walltime
+#$qtag -l pvmem=${memory}mb
+#$qtag -l procs=1
+HEADER
+            if($mode eq "monthly"){
+                print B "#$qtag -t [1-$DAYSINMONTH]\n";
+            }
+            if($mode eq "yearly"){
+                print B "#$qtag -t [1-$DAYSINYEAR]\n";
+            }
+            $canExecute = 1;
+            if($mode eq "WAIT"){
+                print B "$tStepsShrt\ntouch $marker\n";
+            } else {
+                print B "$tStepsShrt\n";
+            }
+            close(B);
+            
+            # Now, we need to wait for the marker to indicate completion
+            $submit = "qsub $queueFile";
+        } elsif($site eq "CEMS"){
+            if($walltime < 24){
+                $queueName = "short-serial";
+            } else {
+                $queueName = "long-serial";
+            }
+            $jobName =  "${TAG}-sd-${loopycounter}";
+            $walltime = &decHourToHHMM($qwalltime);
+            print LOG "$ts bsub $queueFile\n";
+# TODO properly. queue name depends on walltime now
+            print B <<"HEADER";
+#!/bin/bash
+#
+#$qtag -q $queueName
+#$qtag -o %J.log
+#$qtag -e %J.err
+#$qtag -R "rusage[mem=$memory]"
+#$qtag -n 1
+#$qtag -W $walltime
+#$qtag -J ${jobName}
+HEADER
+            if($mode eq "monthly"){
+                print B "#$qtag -t [1-$DAYSINMONTH]\n";
+            }
+            if($mode eq "yearly"){
+                print B "#$qtag -t [1-$DAYSINYEAR]\n";
+            }
+            $canExecute = 1;
+            if($mode eq "WAIT"){
+                print B "$tStepsShrt\ntouch $marker\n";
+            } else {
+                print B "$tStepsShrt\n";
+            }
+            close(B);
+            
+            # Now, we need to wait for the marker to indicate completion
+            $submit = "$qsubmit  $queueFile";
+        } else {
+            # do nothing, we can not launch if we don't know which parallel
+            # system we are launching to.
+        }
+
+        if($canExecute == 1){
+            if($execute == 1){
+#                system("$submit");
+                $submitTime = time;
+                if($slave == 1){
+                    $answer = `$submit`;
+                } else {
+                    chdir($scratch);
+                    $answer = `$submit`;
+                    if($newFullPath ne "" and -e $newFullPath){
+                        chdir($newFullPath);
+                    }
+                }
+                chop($answer);
+
+                $ts = &timestamp();
+#                print STDERR "$ts Submitted job $answer\n";
+                print LOG "$ts $submitTime Submitted job $answer\n";
+#
+#               We pass this to STDOUT so that the code invoking this
+#               pipeline can be made aware of the ID of the job submitted 
+
+                print "JOB=$answer\n";
+                $qsubMsg .="JOB=$answer\n";
+                # just as a precaution
+                sleep(0.01);
+            }
+            $ts = &timestamp();
+#            print LOG "$ts Waiting for $marker... $waitTime\n";
+#            print STDERR "$ts Waiting for $marker... $waitTime\n";
+            if($execute == 1){
+                if($mode eq "WAIT"){
+                    print LOG "$ts Waiting for $marker...\n";
+                    while(!-e $marker){
+                        sleep($waitTime);
+#                    $ts = &timestamp();
+#                    print LOG "$ts No signs of $marker yet\n";
+#                    print STDERR "$ts No signs of $marker yet\n";
+                    }
+                    unlink ($marker);
+                    $finishTime = time;
+                    $dtime = $finishTime - $submitTime;
+                    print LOG "$ts $tid parallel job completed in $dtime \[s\]\n";
+                } else {
+                    $waiter = "WAITER_$tid";
+                    $$waiter = $marker;
+                    $dvars{$waiter} = 1;
+                    print LOG "$ts $tid parallel job submitted and not waiting\n";
+                }
+                # we dispose of the queue file in execute mode
+#                unlink($queueFile);
+            }
+        } else {
+            print LOG "$ts $tid can not submit parallel job for site $site\n";
+        }
+
+    } elsif($kind eq "label" or $kind eq "milestone"){
+# taskd: label or milestone   Defines a point to which it is possible to
+# taskd:         pass control skipping a number of tasks in between
+        if($versyntax == 1){ next; }
+        print LOG "$ts Milestone $firstWord reached\n";
+#        $labelLocation{$firstWord} = $tt;
+    } elsif($kind eq "goto" or $kind eq "skipto"){
+# taskd: goto or skipto transfer the flow to a given "label"
+        if($versyntax == 1){ next; }
+        print LOG "$ts jumping to Milestone $firstWord\n";
+        $tt = $labelLocation{$firstWord} - 1;
+    } elsif($kind eq "if" and lc($lastWord) eq "then"){ 
+# taskd: IF elem1 comparator elem2 THEN - If elem1, elem2 satisfy comparison
+# taskd:               -the then lines are activated. Otherwise, control is
+# taskd:               -passed to ENDIF (if present) or ELSE
+# taskd:               -the THEN particle at the end is essential
+
+#        if($versyntax == 1){ next; }
+        foreach $_ (@allwords){
+#            print STDERR "word: $_\n";
+            for $Lehrheft (keys %dvars){
+                $_ =~ s/$Lehrheft/$$Lehrheft/g;
+            }
+#            print STDERR "word: $_ $$_\n";
+        }
+
+        pop (@allwords);  # getting rid of the 'then' word
+        $iffy = "@allwords";
+#        print STDERR "IFFY: $iffy\n";
+        @parts = split(/ AND | or | OR | and /, $iffy);
+        $tval = "";
+        foreach $_ (@parts){
+            ($pl, $pc, $pr) = split;
+            $val = &evaluateIF($pl, $pc, $pr);
+#            print STDERR "ifPart: $_ val = $val\n";
+            if($tval eq ""){
+                $tval = $val;
+            } else {
+                if(uc($logi) eq "AND"){
+#                    print STDERR "tval |= val\n";
+                    $tval &= $val;
+                } elsif(uc($logi) eq "OR"){
+#                    print STDERR "tval |= val\n";
+                    $tval |= $val;
+                }
+            }
+#            print STDERR "tval = $tval\n";
+            $iffy =~s/$_//;
+            $iffy =~s/^\s*//;
+#            print STDERR "New iffy: $iffy\n";
+            @iparts = split(/ /, $iffy);
+            $logi = shift(@iparts);
+            $iffy =~s/$logi//;
+            $iffy =~s/^\s*//;
+            $iffy =~s/\s*$//;
+#            print STDERR "Newest iffy: >$iffy<\n";
+            if($iffy eq "") { last;}
+        }
+
+        $marka = $laMarka{$fullStatement};
+        $lefto = $allwords[0];
+        $comparator = $allwords[1];
+        $righto = $allwords[2];
+#        print STDERR "IF: $lefto ?? $comparator ?? $righto\n";
+
+#        $val = &evaluateIF($lefto, $comparator, $righto);
+
+        $thenLines = "thenLines$marka";
+        $elseLines = "elseLines$marka";
+        if($tval == 1){
+#            print STDERR "$marka // deactivate else clauses: @$elseLines\n";
+            foreach $kt (@$elseLines){
+                $taskActive[$kt] = 0;
+            }
+            foreach $kt (@$thenLines){
+                $taskActive[$kt] = 1;
+            }
+        } else {
+#            print STDERR "$marka // deactivate then clauses: @$thenLines\n";
+            foreach $kt (@$elseLines){
+                $taskActive[$kt] = 1;
+            }
+            foreach $kt (@$thenLines){
+                $taskActive[$kt] = 0;
+            }
+        }
+
+    } elsif($kind eq "elseif" and lc($lastWord) eq "then"){ 
+# taskd: ELSEIF elem1 comparator elem2 THEN -Equivalent to IF statement
+
+#        if($versyntax == 1){ next; }
+        foreach $_ (@allwords){
+#            print STDERR "word: $_\n";
+            for $Lehrheft (keys %dvars){
+                $_ =~ s/$Lehrheft/$$Lehrheft/g;
+            }
+#            print STDERR "word: $_ $$_\n";
+        }
+
+        pop (@allwords);  # getting rid of the 'then' word
+        $iffy = "@allwords";
+#        print STDERR "IFFY: $iffy\n";
+        @parts = split(/ AND | or | OR | and /, $iffy);
+        $tval = "";
+        foreach $_ (@parts){
+            ($pl, $pc, $pr) = split;
+            $val = &evaluateIF($pl, $pc, $pr);
+#            print STDERR "ifPart: $_ val = $val\n";
+            if($tval eq ""){
+                $tval = $val;
+            } else {
+                if(uc($logi) eq "AND"){
+#                    print STDERR "tval |= val\n";
+                    $tval &= $val;
+                } elsif(uc($logi) eq "OR"){
+#                    print STDERR "tval |= val\n";
+                    $tval |= $val;
+                }
+            }
+#            print STDERR "tval = $tval\n";
+            $iffy =~s/$_//;
+            $iffy =~s/^\s*//;
+#            print STDERR "New iffy: $iffy\n";
+            @iparts = split(/ /, $iffy);
+            $logi = shift(@iparts);
+            $iffy =~s/$logi//;
+            $iffy =~s/^\s*//;
+            $iffy =~s/\s*$//;
+#            print STDERR "Newest iffy: >$iffy<\n";
+            if($iffy eq "") { last;}
+        }
+
+        $marka = $laMarka{$fullStatement};
+        $lefto = $allwords[0];
+        $comparator = $allwords[1];
+        $righto = $allwords[2];
+#        print STDERR "IF: $lefto ?? $comparator ?? $righto\n";
+#        foreach $_ (@allwords){
+#            for $Lehrheft (keys %dvars){
+#                $_ =~ s/$Lehrheft/$$Lehrheft/g;
+#            }
+#        }
+#        $marka = $laMarka{$fullStatement};
+#        $lefto = $allwords[0];
+#        $comparator = $allwords[1];
+#        $righto = $allwords[2];
+##        print "IF: $lefto ?? $comparator ?? $righto\n";
+#
+#        $val = &evaluateIF($lefto, $comparator, $righto);
+
+
+
+
+        $thenLines = "thenLines$marka";
+        $elseLines = "elseLines$marka";
+        if($tval == 1){
+#            print "$marka // deactivate else clauses @$elseLines\n";
+            foreach $kt (@$elseLines){
+                $taskActive[$kt] = 0;
+            }
+            foreach $kt (@$thenLines){
+                $taskActive[$kt] = 1;
+            }
+        } else {
+#            print "$marka // deactivate then clauses @$thenLines\n";
+            foreach $kt (@$elseLines){
+                $taskActive[$kt] = 1;
+            }
+            foreach $kt (@$thenLines){
+                $taskActive[$kt] = 0;
+            }
+        }
+
+    } elsif($kind eq "else"){ 
+# taskd: ELSE   -Else statement part of an if/then/ elseif/else block
+    } elsif($kind eq "endif"){ 
+# taskd: ENDIF   -End statement of an if/then/ elseif/else block
+
+    } elsif($kind eq "sleep"){
+# taskd: SLEEP nseconds     -Halts the pipeline execution nseconds seconds
+        if($versyntax == 1){ next; }
+        $nSekonds = $akargs[0];
+        if($nSekonds eq ""){
+            $nSekonds = 1;
+        }
+        if($execute == 1){
+            sleep($nSekonds);
+        }
+
+    } elsif($kind eq "awaitfor"){ # still to be tested...
+# taskd: AWAITFOR file(s)   -Holds execution until all files exist
+        if($versyntax == 1){ next; }
+        print LOG "awaiting for @akargs to exist\n";
+        $missing = 1;
+        while($missing == 1){
+            $allIn = 1;
+            for $awfile (@akargs){
+                if(!-e $awfile){
+                    $allIn = 0;
+                    last;
+                }
+            }
+            if($allIn == 0){
+                if($execute == 1){
+                    sleep($waitTime);
+                } else {
+                    print LOG "$ts $tid Skipping the sleep.. going zombie\n";
+                    last;
+                }
+            } else {
+                if($execute == 1){
+                    for $awfile (@akargs){
+                        if(!-e $awfile){
+                            unlink ($awfile);
+                        }
+                    }
+                }
+                last;
+            } 
+
+        }
+
+    } elsif($kind eq "addto" or $kind eq "+="){
+# taskd: ADDTO|+= var-name a-value   -Adds 'a-value' to var-name
+
+        $newvar = shift(@allwords);
+#        print STDERR "first argument: $newvar\n";
+        $addvalue = shift(@allwords);
+#        print STDERR "second argument: $addvalue\n";
+        if($dvars{$newvar} ne ""){
+            $$newvar += $addvalue;
+#            print LOG "$ts $tid $addvalue was added to $newvar: $$newvar\n";
+        } else {
+            print LOG "$ts $tid Trying to modify non-existent variable $newvar\n";
+        }
+    } elsif($kind eq "multiplyby" or $kind eq "*="){
+# taskd: MULTIPLYBY|*= var-name factor  -multiplies var-name by factor
+
+        $newvar = shift(@allwords);
+#        print STDERR "first argument: $newvar\n";
+        $scalefactor = shift(@allwords);
+#        print STDERR "second argument: $addvalue\n";
+        if($dvars{$newvar} ne ""){
+            $$newvar *= $scalefactor;
+#            print LOG "$ts $tid $newvar was scaled by $scalefactor $$newvar\n";
+        } else {
+            print LOG "$ts $tid Trying to modify non-existent variable $newvar\n";
+        }
+    } elsif($kind eq "divideby" or $kind eq "/="){
+# taskd: DIVIDEBY|/= var-name factor   -divide var-name by factor
+
+        $newvar = shift(@allwords);
+#        print STDERR "first argument: $newvar\n";
+        $scalefactor = shift(@allwords);
+#        print STDERR "second argument: $addvalue\n";
+        if($scalefactor eq "" or $scalefactor == 0){
+            print LOG "$ts $tid Division by zero prevented: $newvar $scalefactor\n";
+        } else {
+            if($dvars{$newvar} ne ""){
+                $$newvar /= $scalefactor;
+                print LOG "$ts $tid $newvar was scaled by $scalefactor $$newvar\n";
+            } else {
+                print LOG "$ts $tid Trying to modify non-existent variable $newvar\n";
+            }
+        }
+    } elsif($kind eq "addtowalltime"){
+# taskd: ADDTOWALLTIME value -Add value hours to walltime
+        if($versyntax == 1){ next; }
+        $delta = shift(@allwords);
+        $WALLTIME += $delta;
+        print LOG "$ts $tid new WALLTIME: $WALLTIME\n";
+    } elsif($kind eq "scalewalltime"){
+# taskd: ADDTOWALLTIME value -scales walltime by value
+        if($versyntax == 1){ next; }
+        $scale = shift(@allwords);
+        $WALLTIME *= $scale;
+        print LOG "$ts $tid new WALLTIME: $WALLTIME\n";
+    } elsif($kind eq "assignto" or $kind eq "define"){
+# taskd: ASSIGNTO|DEFINE var-name value a-value   -Assigns 'a-value' to var-name
+# taskd: ASSIGNTO|DEFINE var-name fileSize file-path  -Assigns sizeOf(file-path) to var-name
+# taskd: ASSIGNTO|DEFINE var-name command -Assigns the results of 'command' to var-name
+# taskd: ASSIGNTO|DEFINE var-name list -Assigns the following arguments to a list
+# taskd: ASSIGNTO|DEFINE var-name list-from-file -Assigns the lines in the file as a list
+
+        if($versyntax == 1){ next; }
+# what makes tSteps to be wrong to wanting to revert to originalSteps?
+#        $_ = $tSteps;
+        $_ = $originalSteps;
+
+#print STDERR "revisiting $_\n";
+        $_ =~ s/DAYSINMONTH/$DAYSINMONTH/;
+        $_ =~ s/DAYSINYEAR/$DAYSINYEAR/;
+        $_ =~ s/FIRSTYEAR/$FIRSTYEAR/;
+        $_ =~ s/LASTYEAR/$LASTYEAR/;
+        $_ =~ s/WALLTIME/$WALLTIME/;
+        @akargs = split; 
+#        print STDERR "AK1: @akargs\n";
+        $newvar = shift(@akargs);
+        $_ = join(" ",@akargs);
+        for $Lehrheft (keys %dvars){
+            $_ =~ s/$Lehrheft/$$Lehrheft/g;
+        }
+        for $Lehrheft (keys %dlists){
+            $_ =~ s/$Lehrheft/$$Lehrheft/g;
+        }
+        @akargs = split; 
+#        print STDERR "AK2: @akargs\n";
+
+#        print STDERR "assignto $newvar is $dvars{$newvar}\n";
+
+#       Reassigning a variable is perfectly possible, particularly when we
+#       are in loop.
+#
+#        if($dvars{$newvar} ne ""){
+#            die "Error trying to re-initialise variable $newvar\n";
+#        }
+
+        $dvars{$newvar} = 1;
+        $akti =  shift(@akargs);
+        $rest = "@akargs";
+        undef %akeys;
+        foreach $a (@akargs){
+            ($cle,$val) = split(/=/,$a,2);
+            $akeys{lc($cle)} = $val;
+        }
+
+        if($akti eq "value" ){
+             $$newvar = $rest;
+            print LOG "$ts $tid New variable $newvar =  $rest\n";
+        } elsif ($akti eq "filesize"){
+            $myFile = $akargs[0];
+#            print STDERR "looking for filesize for $myFile\n";
+            if(-e $myFile){
+                @stat = stat $akargs[0] ;
+                $size = $stat[7];
+            } else {
+                $size = -1;
+            }
+            $$newvar = $size;
+        } elsif ($akti eq "command"){
+#           print STDERR "Comm: $rest\n";
+            $oval ="";
+            open(LX, "$rest |");
+            while(<LX>){
+#print STDERR "Read from $rest: $_\n";
+               chop;
+               $oval .= $_;
+            }
+            close(LX);
+            $$newvar = $oval;
+        } elsif ($akti eq "list"){
+            @$newvar = @akargs;
+            print LOG "New list $newvar: @$newvar\n";
+            $dlists{$newvar} = 1;
+        } elsif ($akti eq "list-from-file"){
+
+            $file2list = shift(@akargs);
+            if(-e $file2list){
+                undef @$newvar;
+                open(F2, "<$file2list");
+                while(<F2>){
+                    chop;
+                    push @$newvar, $_;
+                }
+                close(F2);
+                $dlists{$newvar} = 1;
+            } else {
+                print LOG "FAIL: $file2list not found to create list $newvar\n";
+            }
+        } else {
+            print LOG "invalid activation operator $akti\n";
+        }
+#        print STDERR "value for $newvar: $$newvar\n";
+    } elsif($kind eq "loop"){
+# taskd: LOOP var=VAR-NAME from=FIRST_INDEX to=LAST_INDEX [inc=delta]  -loop
+# taskd:        -VAR-NAME varies from FIRST_INDEX to LAST_INDEX inclusive
+# taskd:        -delta can be positive or negative
+        if($versyntax == 1){ next; }
+        $_ = $originalSteps;
+#        print STDERR "DBG1: $originalSteps\n";
+        $_ =~ s/DAYSINMONTH/$DAYSINMONTH/;
+        $_ =~ s/DAYSINYEAR/$DAYSINYEAR/;
+        $_ =~ s/FIRSTYEAR/$FIRSTYEAR/;
+        $_ =~ s/LASTYEAR/$LASTYEAR/;
+        @akargs = split; 
+#        print STDERR "DBG2: @akargs\n";
+        undef %akeys;
+        foreach $a (@akargs){
+            ($cle,$val) = split(/=/,$a,2);
+            $akeys{lc($cle)} = $val;
+        }
+        $LOOPVAR = $akeys{"var"};
+        $lfrom = $akeys{"from"};
+        $lto = $akeys{"to"};
+        $linc = $akeys{"inc"};
+        if ($linc eq ""){ $linc = 1; }
+        $lin = $akeys{"in"};
+        $loopTaskPosition = $tt;
+        $lod = 0;
+
+        if($lin ne ""){   # loop on a user defined list or a system list
+            $loopKind = "list";
+            # the list must exist.
+            if($dlists{$lin} eq ""){
+                die "No list $lin has been defined. Stopping\n";
+            }
+            $inLoop = 1;
+            @looplist = @$lin;
+            $loopycounter = shift(@looplist);
+            $lname = $akargs[1];
+#            print STDERR "@akargs\n";
+            if($lin eq "LISTOFDATES" or $lin eq "LISTOFMONTHS" or $lin eq "LISTOFYEARS"){
+#                print STDERR "Into a list-of-dates situation\n";
+                $lod = 1;
+            }
+
+            $$LOOPVAR = $loopycounter;
+            print STDERR "LoopListVar: $LOOPVAR $$LOOPVAR\n";
+        } else {
+            $dvars{$LOOPVAR} = 1;
+            $loopKind = "numeric-range";
+            if ($lfrom eq ""){
+                die "Loop $LOOPVAR (task $tid) has no \"from=\" key. Quiting\n";
+            }
+            if ($lto eq ""){
+                die "Loop $LOOPVAR (task $tid) has no \"to=\" key. Quiting\n";
+            }
+            $inLoop = 1;
+            $loopycounter = $lfrom;
+            print LOG "$ts $tid $kind $LOOPVAR from=$lfrom to=$lto incrmnt=$linc\n";
+            $$LOOPVAR = $loopycounter;
+        }
+    } elsif($kind eq "endloop" or $kind eq "pool"){
+# taskd: ENDLOOP|POOL     -Marks the end of a LOOP
+#        print "$tid   ending loop $LOOPVAR $loopycounter $lfrom $lto\n";
+        if($versyntax == 1){ next; }
+        $endLoopPosition = $tt;
+        if($loopKind eq "numeric-range"){
+            if($lfrom < $lto){
+                $loopycounter += $linc;
+                if($loopycounter > $lto){
+                    $inLoop = 0;
+                    print LOG "$ts $tid   ending loop $LOOPVAR\n";
+                } else {
+                    $tt = $loopTaskPosition;
+                    $$LOOPVAR = $loopycounter;
+    #                print "Back to task $tasks[$tt]\n";
+                }
+            } else {
+                $loopycounter -= $linc;
+                if($loopycounter < $lto){
+                    $inLoop = 0;
+                    print LOG "$ts $tid   ending loop $LOOPVAR\n";
+                } else {
+                    $tt = $loopTaskPosition;
+                    $$LOOPVAR = $loopycounter;
+    #                print "Back to task $tasks[$tt]\n";
+                }
+            }
+        } else {  # type list
+            $loopycounter =  shift(@looplist);
+            if($loopycounter ne ""){
+                $$LOOPVAR = $loopycounter;
+#                print STDERR "Next value: $loopycounter\n";
+                $tt = $loopTaskPosition;
+            } else {
+                $inLoop = 0;
+                $lod = 0;
+                print LOG "$ts $tid   ending loop $LOOPVAR\n";
+            }
+        }
+    } elsif($kind eq "echo"){
+# taskd: ECHO message       -Logs 'message' to the LOG file
+        if($versyntax == 1){ next; }
+        print LOG "$ts $tid echo:  $tSteps\n";
+    } elsif($kind eq "exec"){
+# taskd: EXEC command   -Executes a command and wait for it to finish to go to next task. No execution is done in non-exec mode
+        if($versyntax == 1){ next; }
+        if($execute == 1){
+            print LOG "$ts $tid  \"$tSteps\" \n";
+            system ("$tSteps");
+        } else {
+            print LOG "$ts $tid  \"$tSteps\"  in test mode\n";
+            system ("$tSteps");
+        }
+
+    } elsif($kind eq "chdir"){
+# taskd: CHDIR absolute-path   -changes the directory to absolute-path
+        if($versyntax == 1){ next; }
+        $newFullPath = $firstWord;
+        if(-e $newFullPath){
+            print LOG "$ts chdir $newFullPath\n";
+            chdir($newFullPath);
+        } else {
+            print LOG "$ts chdir fail. No $newFullPath\n";
+        }
+
+
+    } elsif($kind eq "sexec"){
+# taskd: SEXEC command   -Executes a command and wait for it to finish to go to next task executes only in exec mode
+        if($versyntax == 1){ next; }
+        if($execute == 1){
+            print LOG "$ts $tid  \"$tSteps\" \n";
+            system ("$tSteps");
+        } else {
+            print LOG "$ts $tid  \"$tSteps\"  in test mode\n";
+        }
+
+    } elsif($kind eq "local-bg"){
+# taskd: LOCAL-BG mode command      -Executes command in the bg
+# taskd:      -mode = WAIT waits for the command to finish to go to next task
+# taskd:      -mode = NOWAIT goes to the next task right away
+        if($versyntax == 1){ next; }
+
+        $DELAY = uc($firstWord);
+        print LOG "$ts $tid  $DELAY system $tStepsShrt \&\n";
+
+        # this scenario requires waiting, but waiting for what?
+        # The pipeline has no control on how to control this, unless we
+        # create  a shell script and add a touch to a verifyier, like we
+        # did with the parallel
+        if(!-e $local){ system("mkdir -p -m 775 $local"); }
+        $shellFile = "$local/${procedureId}_${stepo}.sh";
+        open(S, ">$shellFile");
+#        print S "$tSteps\n";
+        if($DELAY eq "WAIT"){
+            print S "$tStepsShrt\ntouch $marker\n";
+        } else {
+            print S "$tStepsShrt\n";
+        }
+        close(S);
+        if($execute == 1){
+            system ("bash $shellFile &");
+            sleep(1);
+            if($DELAY eq "WAIT"){
+                while(!-e $marker){
+                    sleep($waitTime);
+                }
+            }
+            unlink ($marker);
+        }
+
+    } elsif($kind eq "local-bash"){
+# taskd: local-bash  script-file   -Makes the shell execute the script file
+        # this scenario does not require waiting
+#        print "$tid  lb issuing: bash $comm \n";
+        if(-e $comm){
+            print LOG "$ts $comm not found\n";
+        } else {
+        if($versyntax == 1){ next; }
+            if($execute == 1){
+                system ("bash $comm");
+            }
+        }
+
+    } elsif ($kind eq "terminate" or ($kind eq "kill") or ($kind eq "stop")){
+# taskd: TERMINATE|KILL|STOP  message  -Stops the pipeline execution
+        if($versyntax == 1){ next; }
+        print LOG "$ts TERMINATOR: @akargs\n";
+        last;
+
+    } elsif ($kind eq "failure" or $kind eq "error" or $kind eq "fail"){
+# taskd: ERROR|FAILURE|FAIL message    -Records message in the error file
+        
+        if($versyntax == 1){ next; }
+        open(FAIL, ">>$failsFile");
+        print FAIL "$ts FAILURE @akargs\n";
+        close(FAIL);
+
+    } elsif (($kind eq "delete") or ($kind eq "remove") or ($kind eq "rm")){
+# taskd: DELETE|RM|REMOVE filename(s)     -Remove filename(s)
+        if($versyntax == 1){ next; }
+        print LOG "$ts deleting @akargs\n";
+
+        if($execute == 1){
+            foreach $fyle (@akargs){
+                if(-e $fyle){ unlink ($fyle); }
+            }
+        }
+
+    } elsif ($kind eq "cycle" or $kind eq "next"){ # into a task
+# taskd: CYCLE       -Ignore the rest of the loop statements
+        if($versyntax == 1){ next; }
+        $tea = $eloop{$LOOPVAR}-1;
+        print LOG "$ts CYCLE: ignoring remaining $LOOPVAR tasks -> $tasks[$tea] tt=$tea\n";
+        if($inLoop == 1){
+            $tt = $eloop{$LOOPVAR}-1;
+        }
+        # not sure if it is -1 or 0
+    } elsif ($kind eq "break"){
+# taskd: BREAK       -Jumps out of a LOOP to the task following the loop's end
+        if($versyntax == 1){ next; }
+        print LOG "$ts BREAK   Ignoring remaining $LOOPVAR tasks -> $tasks[$tea] tt=$tea\n";
+        $tea = $eloop{$LOOPVAR};
+        if($inLoop == 1){
+            $tt = $tea;
+        }
+        # not sure if it is +1 or 0
+    } elsif ($kind eq "email"){
+# taskd: EMAIL   message    -Emails NOTIFY if it has been defined as a variable
+        if($versyntax == 1){ next; }
+        if($NOTIFY ne ""){
+            $msg = "@akargs";
+            $msg = "$tSteps";
+            if($execute == 1){
+                open(M, "| mailx -s '$msg' $NOTIFY");
+                print M "$me notification $TAG:\n\n$msg\n";
+                close(M);
+            } else {
+                print LOG "$me notification $TAG:\n\n$msg\n";
+            }
+        } else {
+            print LOG "emailing. NOTIFY variable not set, no-one to email\n";
+        }
+
+    } else {
+        print LOG "UNKNOWN OPTION $kind\n";
+#        print STDERR "UNKNOWN OPTION $kind\n";
+    }
+#    $tt++;
+}
+if($versyntax == 1){
+    print LOG "\nend Syntax verification\n\n";
+}
+
+$ts = &timestamp();
+
+print LOG "$ts $procedureId completed\n";
+
+close(LOG);
+
+print STDERR "$ts FINE\n";
+if($qsubMsg eq ""){
+    print "$me concluded\n";
+}
+
+exit;
+
+sub pipeStats(){
+    my $screech = @_[0];
+    open (J, "<$logFile");
+    $njobs2kill = 0;
+    if($site eq "UOL"){
+        while(<J>){
+            chop;
+            if(/\.qsub$/){
+                @jparts = split;
+                $qfile = pop(@jparts);
+            } elsif(/Submitted job/){
+                @jparts = split;
+                $job = pop(@jparts);
+                $job =~ s/\..*//;
+                $qsubPerJob{$job} = $qfile;
+#                print "$_\nJob/qsub $job $qfile\n";
+                $njobs2kill++;
+            }
+        }
+    } elsif($site eq "CEMS"){
+        while(<J>){
+            chop;
+            if(/\.qsub$/){
+                @jparts = split;
+                $qfile = pop(@jparts);
+            } elsif(/Submitted job/){
+                @jparts = split;
+                $job = pop(@jparts);
+                $job =~ s/\..*//;
+                $qsubPerJob{$job} = $qfile;
+                print "$_\nJob/qsub $job $qfile\n";
+                $njobs2kill++;
+            }
+        }
+    } else {
+    }
+    close(J);
+    open(S, "ls $screech/*.e*|");
+    $nerrorFiles = 0;
+    $nMemExceeded = 0;
+    $nWallHits = 0;
+    $nBusError = 0;
+    $nOtherErrors = 0;
+    while(<S>){
+        chop;
+        ($file, $jobid) = split(/\.e/);
+        $qsubFile = $qsubPerJob{$jobid};
+        $efile = $_;
+        open(E, "<$_");
+        # The first three lines are standard
+        $_ = <E>;
+        @dparts = split;
+        $dateId = "$dparts[2] $dparts[3] $dparts[4]";
+        $_ = <E>;
+        $_ = <E>;
+        $_ = <E>;
+        @dparts = split;
+        $fNode = $dparts[2];
+        $nerrors = 0;
+        while(<E>){
+            chop;
+            if(/^#/) { next;}   # ignore debugging lines
+            if(/Cannot allocate memory/){
+#                print "Mem.fail: $jobid qsub $qsubFile\n";
+                push @memoryFailes, $qsubFile;
+                $nMemExceeded++;
+                $failingMemoryNodes{$fNode}++;
+                $nerrors++;
+            } elsif(/Allocation would exceed/){
+                #ignore
+            } elsif(/ls: cannot access/){
+                #ignore
+            } elsif(/unknown HPC/){
+                #ignore
+            } elsif(/to run parallel/){
+                #ignore
+            } elsif(/to run in parallel/){
+                #ignore
+            } elsif(/Bus error/){
+                push @busError, $qsubFile;
+                $failingBuses{$fNode}++;
+                $failingBusNodes{$fNode}++;
+                $nBusError++;
+                $nerrors++;
+            } elsif(/job killed/ and /walltime/ and /exceeded/){
+#                print "wall.hit $jobid qsub $qsubFile\n";
+#                print "cp ${qsubFile} ${qsubFile}R\n";
+                push @wallHits, $qsubFile;
+                $failingWallNodes{$fNode}++;
+                $nWallHits++;
+                $nerrors++;
+            } else {
+                push @otherErrors, $qsubFile;
+                print "Other error:  $jobid $efile $_\n";
+                push @otherErrorsText, $_;
+                $nOtherErrors++;
+                $nerrors++;
+            }
+        }
+        if($nerrors > 0){
+#            print "With errros: $efile\n";
+            push @withErrors, $efile;
+        } else {
+            push @withoutErrors, $efile;
+        }
+        close(E);
+        $nerrorFiles++;
+    }
+    close(S);
+    print "Number of jobs in the task: $njobs2kill\n";
+    print "Number of error files: $nerrorFiles\n";
+    print "Number of memory fails: $nMemExceeded\n";
+    print "Number of wall hits $nWallHits\n";
+    print "Number of Bus error $nBusError\n";
+    print "Number of other errors $nOtherErrors\n";
+}
+
+sub evaluateIF(){
+    my ($lefty, $compy, $righty) = @_;
+    $return = 0;
+#    print STDERR "Comparing $compy $lefty $righty\n";
+    if( $compy eq "eq"){
+        if($lefty eq $righty) { $return = 1; }
+    } elsif($compy eq "ne"){
+#        print STDERR "Comparing NE $lefty $righty\n";
+        if($lefty ne $righty) { 
+#            print STDERR "Comparing $lefty <> $righty\n";
+            $return = 1;
+        } else {
+            $return = 0;
+        }
+    } elsif($compy eq "le"){
+#        print STDERR "Comparing LE $lefty $righty\n";
+        if($lefty <= $righty) {
+#            print STDERR "Yeah $lefty LE $righty\n";
+            $return = 1;
+        } else {
+#            print STDERR "Nah,  $lefty GT $righty\n";
+            $return = 0;
+        }
+    } elsif($compy eq "lt"){
+#        print STDERR "Comparing LT $lefty $righty\n";
+        if($lefty < $righty) {
+#            print STDERR "Comparing $lefty < $righty\n";
+            $return = 1;
+        } else {
+#            print STDERR "Comparing $lefty >= $righty\n";
+            $return = 0;
+        }
+    } elsif($compy eq "ge"){
+        if($lefty >= $righty) {
+            $return = 1;
+        } else {
+            $return = 0;
+        }
+    } elsif($compy eq "gt"){
+        if($lefty > $righty) {
+            $return = 1;
+        } else {
+            $return = 0;
+        }
+
+    } elsif($compy eq "exist" or $compy eq "exists"){
+#        print LOG "$ts does $lefty exist?\n";
+        if(-e $lefty) {
+#            print LOG "$ts $lefty does exist.\n";
+            $return = 1;
+        } else {
+#            print LOG "$ts $lefty does not exist.\n";
+            $return = 0;
+        }
+    } elsif($compy eq "existnot" or $compy eq "missing" or $compy eq "noexist"){
+#        print STDERR "does >$lefty< exist?\n";
+        if(!-e $lefty) {
+#            print STDERR "does not >$lefty< exist\n";
+            $return = 1;
+        } else {
+            $return = 0;
+        }
+    } elsif($compy eq "empty"){
+        if(-e $lefty) { 
+            @stat = stat( $lefty) ;
+            $size = $stat[7];
+            if($size == 0) {$return = 1;}
+        } else{
+            $return = -1;
+        }
+    } elsif($compy eq "!empty"){
+        if(-e $lefty) { 
+            @stat = stat $lefty ;
+            $size = $stat[7];
+            if($size > 0) {$return = 1;}
+        } else{
+            $return = -1;
+        }
+    } elsif($compy eq "in"){
+        if(-e $righty) { 
+            open(F, "<$righty");
+            $in = 0;
+            while(<F>){
+                if(/$lefty/) { $in++ ; }
+            }
+            close(F);
+            
+            if($in > 0) { $return = 1; }
+        }
+    } elsif($compy eq "not-in"){
+        if(-e $righty) { 
+            open(F, "<$righty");
+            $in = 0;
+            while(<F>){
+                if(/$lefty/) { $in++ ; }
+            }
+            close(F);
+            
+            if($in == 0) { $return = 1; }
+        }
+#    } elsif($compy eq "gt"){
+#        if($lefty > $righty) { $return = 1; }
+#    } elsif($compy eq "gt"){
+#        if($lefty > $righty) { $return = 1; }
+    } 
+    return $return;
+}
+
+# routine to convert decimal hours to HH:MM:SS notation
+sub decHourToHHMMSS(){
+    my $wt = @_[0];
+    my $nsec = $wt * 3600;
+    my $nh = int( $nsec / 3600);
+    my $nleft = $nsec;
+    $nleft -= $nh*3600;
+    my $nm = int( ($nleft/60));
+    $nleft -= $nm*60;
+    my $ns = int($nleft);
+    my $wally = sprintf("%02d:%02d:%02d", $nh, $nm, $ns);
+    $wally;
+}
+
+# routine to convert decimal hours to HH:MM notation
+# This notation is used at CEMS queues
+sub decHourToHHMM(){
+    my $wt = @_[0];
+    my $nsec = $wt * 3600;
+    my $nh = int( $nsec / 3600);
+    my $nleft = $nsec;
+    $nleft -= $nh*3600;
+    my $nm = int( ($nleft/60));
+    my $wally = sprintf("%02d:%02d", $nh, $nm);
+    $wally;
+}
+
+
+
+sub timestamp(){
+    ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) =
+                                                localtime(time);
+    $D_mon++;
+    $D_year += 1900;
+    $ts = sprintf("%02d/%02d/$D_year %02d:%02d:%02d", $D_mday, $D_mon, $D_hour, $D_min, $D_sec);
+}
+
+sub showHelp(){
+    # TODO fix this manpage
+    print <<"MANPAGE";
+runPipeline
+    app to run a series of commands (tasks) based on the content of a pipe-file
+    The next task is executed only when the previous task has completed.
+
+Syntax:
+    $me yyyy[-mm[-dd]] pipe-file [-exec] [-topDir=/full/path]
+                or
+    $me year1-year2 pipe-file [-exec] [-topDir=/full/path]
+
+Arguments:
+
+    The first argument (mandatory) is the date: it can take several forms:
+    Each form generates variable names which can be used in the pipe-file
+    Date description     argument syntax         Variables defined
+
+    TO BE UPDATED!!
+    A single day:        yyyy-mm-dd              YYY MMM DDD
+    A single month:      yyyy-mm                 YYY MMM
+    A single year:       yyyy                    YYY
+    A range of years:    year1-year2             FIRSTYEAR LASTYEAR
+
+    Note that SMM and SDD are zero padded values for the month and the day.
+    LMM is the name of the corresponding month
+
+    The second argument (mandatory) is the full path name for the pipe
+    description file (see below)
+
+    Optional arguments:
+
+    -exec : runPipeline by default does not trigger the commands, it logs
+            a few things and creates some files for the user to check.
+            It is recommended to use this mode to verify that all commands
+            and filenames are what they are supposed to be before adding
+            the -exec command to go into "full action mode"
+
+            When -exec is present, runPipeline executes every command
+            described in the pipe-file
+            
+    -topDir : runPipeline uses a default top directory: $defTopDir
+            Users can alter this value to suit their needs.
+
+The pipe-file:
+
+    This files contains two sections, each preceeded by a mandatory line:
+    Section name            Mandatory-line
+    Parameters              --PARAMETERS
+    The parameter TAG       TAG = something
+    List of tasks           --TASKS
+
+    Blank lines and lines starting with '#' are ignored.
+
+    Parameters:
+        These are definitions you give in the form KEY = VALUE
+        For instance:
+TAG = GT_CMS_3U
+
+EXEC_PATH = /data/atsr/SOFTWARE/FORTRAN/INTERNAL_CODE/BIN
+EXEC1 = EXEC_PATH/gt_cmsaf_reproj.exe
+EXEC2 = EXEC_PATH/gt_mdb_ss_processor.exe
+
+CONTROL1 = /data/atsr/SOFTWARE/FORTRAN/INTERNAL_CODE/CTL_FILES/GT_CMSAF/GT_CMS_3U/YYY/driver_ctl_cmsaf_msg_dDDD_mMMM_yYYY.dat
+LOGFILE1 = /data/atsr/LOG_FILES/GT_CMSAF/GT_CMS_3U/YYY/driver_log_cmsaf_msg_dDDD_mMMM_yYYY.log
+
+#definitions for submissions to a parallel queue (maybe system dependent)
+WALLTIME = 8.25
+MEMORY = 19990mb
+NOTIFY = pfo2\@le.ac.uk
+
+
+        The idea is that as Keys are defined, they can be used inside
+        other keys or in tasks to shorten the writing.
+        
+        Note how CONTROL1 and LOGFILE1 make use of the variable names for
+        day, month and year
+
+        WALLTIME is expressed in fractional hours (no sexagesimal notation).
+                 Its default value is 5 hours
+        MEMORY is the maximum memory a parallel job may take
+        NOTIFI if present will allow the action EMAIL (see below) to send a
+               message to the user
+
+
+    List of tasks:
+
+        These are the real commands you want the pipeline to run.
+
+        The next task is executed only when the previous task has completed.
+        Example:
+
+--TASKS
+
+T1 parallel wait EXEC1 < CONTROL1 > LOGFILE1
+T1 parallel wait /home/p/pfo2/bin/check_DONE LOGFILE1 > VERIFY1
+#
+T4 if-in LOGFILE1 DONE TERMINATE Successful run
+T5 if-not-in LOGFILE1 DONE EMAIL No DONE in LOGFILE1
+
+        Syntax of a task:
+            taskId taskAction arguments
+
+        taskId is a string which allows you to identify the task.
+        taskId shall not contain spaces of any kind
+        taskId can be repeated to indicate commands which need to be run
+        one after the other in parallel.
+        In the example, T1 has two commands to go to be
+        executed by a single node in the parallel system.
+
+MANPAGE
+
+    open(S, "<$scripto");
+    while(<S>){
+        if(/^# taskd:/){
+            $_ =~ s/^# taskd://;
+            print "task: $_";
+        }
+    }
+
+#        taskAction is one of the possible operations runPipeline can handle.
+#        taskAction is one word (no spaces)
+#
+#        command is either a valid UNIX command or a series of actions certain
+#            tasks can handle
+#
+#
+#        Valid values for taskAction and their syntax
+#
+#        taskName    arguments
+#        ----------------------
+#        parallel    any valid UNIX command, including < or >
+#                    submit command to the parallel queue, creating
+#                    the submit script. 
+#
+#        local-bg    any valid UNIX command, including < or >
+#                    executes the command in the local node in the background
+#
+#        local-bash  any valid UNIX command, including < or >
+#                    executes the command in the local node 
+#
+#        echo        multi-word message
+#                    logs the message to the log file
+#
+#        sleep       nSeconds
+#                    forces runPipeline to sleep nSeconds.
+#
+#        awaitfor    list of files
+#                    This task is not completed until all the files in the list
+#                    exist. It is a way of controlling more than one task at a
+#                    time.
+#
+#
+#
+#
+#        Flow control elements:
+#
+#        taskName    arguments
+#        ----------------------
+#        loop        var=LOOPVAR from=initialValue to=finalValue [inc=increment]
+#                    performs a defined loop, LOOPVAR (whatever name you give it)
+#                    varies from initialValue to finalValue (inclusive).
+#                    LOOPVAR can be used in the content of other tasks and it
+#                    will be replaced by its current value inside the loop
+#
+#        endloop     
+#                    closes the content of loop
+#
+#        if-present      FILENAME  conditional-actions
+#                        if FILENAME exists, then execute conditional-actions
+#
+#        if-not-present  FILENAME  conditional-actions
+#                        if FILENAME does not exist, execute conditional-actions
+#
+#        if-empty        FILENAME  conditional-actions
+#                        if FILENAME is empty execute conditional-actions
+#
+#        if-non-empty    FILENAME  conditional-actions
+#                        if FILENAME is not empty execute conditional-actions
+#
+#        if-in           FILENAME PATTERN conditional-actions
+#                        if PATTERN is in FILENAME execute contidional-actions
+#                        PATTERN is a single word or a valid regex
+#
+#        if-not-in       FILENAME PATTERN conditional-actions
+#                        if PATTERN is not in FILENAME execute contidional-actions
+#
+#        Conditional actions:
+#
+#        action      arguments
+#        ----------------------
+#        TERMINATE   multi-word message
+#                    terminates the execution of the pipeline
+#
+#        DELETE      none
+#        REMOVE      none
+#                    deletes FILENAME from the system
+#
+#        CYCLE       none
+#                    skips the rest of the tasks in a LOOP. Like in Fortran
+#
+#        REPEAT      tid=TASK-ID  nrepeat=N awt=additional-walltime
+#                    go back to task TASK-ID up to nrepeat times. Each time
+#                    the task is repeated, awt is added to the walltime
+#                    All tasks between TASK-ID and the conditional are repeated.
+#
+#        SKIP        ntoskip=N
+#                    skip N tasks from the current location
+#
+#        EMAIL       multi-word message
+#                    If NOTIFY was defined as a parameter, the message is
+#                    mailed to that recipient
+#
+#        EXEC        multi-word command
+#                    The command is executed only when in "full action mode".
+#                    This is a powerful option. Use with caution.
+#
+#        ECHO        multi-word comment
+#                    It writes the comment to the log file, no other action is
+#                    taken
+#MANPAGE
+
+}

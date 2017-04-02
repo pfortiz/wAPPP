@@ -1,0 +1,176 @@
+#!/usr/bin/perl
+
+# script to examine one log file, the first argument to this script.
+#
+# Options:
+#   -z      returns 1 if a gzip version is present or if DONE is present in .log
+#   -d      returns 1 if Done is present 0 otherwise
+#   -wt     returns the walltime for the job in decimal hours
+#   -hwt    returns the walltime for the job in sexagesimal
+#   -fw     returns the number of files written
+#   -if     returns the number of input files used
+#   -nc     returns the number of fails or netcdf warnings
+#   -fnf    returns the lines and number of file_not_found occurrance
+#
+# Usage: verify_GT_LOG log-file [-d] [-wt] [-hwt] [-fw] [-if]
+
+use Time::Local;
+
+sub getTimeFromLogLine(){
+    $_ = @_[0];
+#    my $file = @_[1];
+#    my $location = @_[2];
+    my @pts = split;
+    $_ = pop(@pts);
+    my $second = substr($_,6,2);
+    my $minute = substr($_,3,2);
+    my $hour = substr($_,0,2);
+    $_ = pop(@pts);
+    $_ = pop(@pts);
+    my $year = substr($_,4,4);
+    my $month = substr($_,2,2);
+    my $day = substr($_,0,2);
+    my $mytime;
+    if($month == 0){
+#        print "In $file $location No time: @_[0]\n";
+        $mytime = "1970/01/01T00:00:00";
+    } else {
+        $mytime = timelocal($second,$minute,$hour,$day,$month-1,$year);
+#    print "$year/$month/${day}T$hour:$minute:$second = $mytime\n";
+    }
+    $mytime;
+}
+
+@parts = split(/\//, $0);
+$me = pop(@parts);
+if($#ARGV < 0){
+    die "Usage:  $me log-file [-d] [-if] [-fw] [-wt]\n";
+}
+$logFile = shift(@ARGV);
+
+my $showDone = 0;
+my $showWallTime = 0;
+my $showFilesWritten = 0;
+my $showFilesIngested = 0;
+my $showNCDFwarnings = 0;
+my $showHumanWallTime = 0;
+my $showFileNotFound = 0;
+my $ctl_path = "";
+my $memory = "9990mb";
+foreach $_ (@ARGV){
+    if($_ eq "-d"){
+        $showDone = 1;
+    } elsif(/-z/){
+        $showGzipDone = 1;
+    } elsif(/-wt/){
+        $showWallTime = 1;
+    } elsif(/-hwt/){
+        $showHumanWallTime = 1;
+    } elsif(/-fw/){
+        $showFilesWritten = 1;
+    } elsif(/-if/){
+        $showFilesIngested = 1;
+    } elsif(/-nc/){
+        $showNCDFwarnings = 1;
+    } elsif(/-fnf/){
+        $showFileNotFound = 1;
+    }
+}
+
+#print "file: $logFile\n";
+if($showGzipDone == 1){
+    if(-e "$logFile.gz"){
+        print "11\n";
+    } else {
+        if(-e $logFile){
+            open (S, "<$logFile");
+            while(<S>){
+                chop;
+                if(/DONE/){
+                    print "1\n";
+                    exit;
+                }
+            }
+            close(S);
+            print "-1\n";
+        } else {
+            print "-1\n";
+        }
+    }
+    exit;
+} else{
+    if (!-e $logFile){
+        print "-1\n";
+        exit;
+    }
+}
+
+$host = `hostname`;
+$localUser = $ENV{USER};
+
+$nDone = 0;
+$nfw = 0;
+$nif = 0;
+$nncw = 0;
+$fnferrors = "";
+$nfnf= 0;
+open (S, "<$logFile");
+while(<S>){
+    chop;
+    if(/DONE/){
+        $nDone++;
+    } elsif(/Written/){
+        @parts = split;
+        for $_ (@parts){
+            if(/^\// and -e $_){
+                $nfw++;
+                last;
+            }
+        }
+    } elsif(/No such file or directory/){
+        $fnferrors .= "$_ ; ";
+        $nfnf++;
+    } elsif(/iFile:/){
+        $nif++;
+    } elsif(/fail/i){
+        $nncw++;
+    }
+    push @flines, $_;
+}
+close(S);
+
+my $initialTime = &getTimeFromLogLine($flines[0]);
+my $finalLine = $flines[$#flines];
+my $finalTime = &getTimeFromLogLine($finalLine);
+if($finalTime =~ /1970/){
+    $finalLine = $flines[$#flines-1];
+    $finalTime = &getTimeFromLogLine($finalLine);
+}
+
+my $tdt = $finalTime - $initialTime; # dt in seconds
+my $dt = $tdt  / 3600.;              # dt in decimal hours
+my $hh = int($tdt/3600);
+$tdt -= $hh*3600;
+my $mm = int($tdt/60);
+$tdt -= $mm*60;
+my $shh = sprintf("%02d", $hh);
+my $smm = sprintf("%02d", $mm);
+my $sss = sprintf("%02d", $tdt);
+my $hdt = "$shh:$smm:$sss";
+
+if($showDone == 1){
+    print "$nDone\n";
+} elsif($showWallTime == 1){
+    print "$dt\n";
+} elsif($showHumanWallTime == 1){
+    print "$hdt\n";
+} elsif($showFilesWritten == 1){
+    print "$nfw\n";
+} elsif($showFilesIngested == 1){
+    print "$nfi\n";
+} elsif($showNCDFwarnings == 1){
+    print "$nncw\n";
+} elsif($showFileNotFound == 1){
+    print "$nfnf $fnferrors";
+}
+exit;

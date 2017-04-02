@@ -1,0 +1,62 @@
+#!/usr/bin/perl
+
+# script which examines a directory (path) and lists its contents.
+# This is an overkill, as this could be easily be achieved by 'ls path', a
+# command that runPipeline can handle without any problem
+#
+# One important feature is that we can introduce a pattern which each line
+# must match, which it could be achieved from the command line by piping
+# 'ls path | grep pattern '    runPipeline will take that as well
+#
+# Usage: contentRetriever path
+
+
+@parts = split(/\//, $0);
+$me = pop(@parts);
+if($#ARGV < 0){
+    die "Usage:  $me path=path [fp=pattern dt=data_tracer [-count]]\n";
+}
+
+foreach $_ (@ARGV){
+    ($key, $value) = split(/=/,$_, 2);
+    if($value eq ""){
+        $value = 1;
+    }
+    $adict{$key} = $value;
+}
+
+$path = $adict{"path"};
+$dt = $adict{"dt"};
+$pattern = $adict{"fp"};
+$count = $adict{"-count"};
+
+if(!-e $path){
+#    print "$path\n";
+    print "-1\n";
+    exit;
+}
+
+undef @files;
+open (S, "ls $path |");
+if($pattern ne ""){
+    while(<S>){
+        if(!/$pattern/){ next; }
+        chop;
+        push @files, $_;
+    }
+} else {
+    while(<S>){
+        chop;
+        push @files, $_;
+    }
+}
+close(S);
+
+if($count != 1){
+    foreach $_ (@files){
+        print "$_\n";
+    }
+} else {
+    $nFiles = $#files + 1;
+    print "$nFiles\n";
+}

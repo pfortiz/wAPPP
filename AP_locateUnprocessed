@@ -1,0 +1,51 @@
+#!/usr/bin/perl
+
+# script to locate data existing in the data directories which is not
+# present in the processed files
+#
+#
+# Usage: AP_locateUnprocessed raw-data-file processed-file
+#
+# Both imput files must contained a harmonised time-stamp as the first
+# column
+#
+# Author: Patricio F. Ortiz
+
+
+@parts = split(/\//, $0);
+$me = pop(@parts);
+if($#ARGV < 0){
+    die "Usage:  $me raw-data-list processed_list\n";
+}
+$raw = shift(@ARGV);
+$proc = shift(@ARGV);
+
+if(!-e $raw){
+    die "No raw data to examine\n";
+}
+
+if(!-e $proc){
+    die "No processed data to examine\n";
+}
+
+open(R, "<$raw");
+while(<R>){
+    chop;
+    ($ts, $file) = split;
+    $rData{$ts} = $file;
+}
+close(R);
+
+open(P, "<$proc");
+while(<P>){
+    chop;
+    ($ts, $ptime, $pdate, @file) = split;
+    $pData{$ts} = 1;
+}
+close(P);
+
+foreach $k (sort keys %rData){
+    if($pData{$k} eq ""){
+        print "$rData{$k}\n";
+    }
+}

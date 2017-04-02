@@ -1,0 +1,77 @@
+#!/usr/bin/perl
+
+# script to take a line at a time and extract from it the corresponding
+# time-stamp in harmonised format.
+#
+# The date is requested because this script should be called from
+# runPipeline
+#
+# These scenarios are supported
+# MODIS original     nativemodis
+# S3 pdus            s3pdu
+# GT_Products        gtproduct
+#
+# This mode is the first argument to allow usage of this command in pipe
+# mode
+#
+# The output will be 
+# column 1: harmonised timestamp
+# column 2: input-file
+#
+#
+# Usage: getAvailableTimestamp yyyy-mm-dd mode [inputFile]
+#
+# Author: Patricio F. Ortiz
+
+
+@parts = split(/\//, $0);
+$me = pop(@parts);
+if($#ARGV < 0){
+    die "Usage:  $me mode [inputFile]\n";
+}
+$date = shift(@ARGV);
+$mode = shift(@ARGV);
+($year, $month, $day) = split(/-/, $date);
+$hdate = sprintf("%04d%02d%02d", $year, $month, $day);
+
+$inputFile = shift(@ARGV);
+if($inputFile eq ""){
+    while(<>){
+        chop;
+        push @content, $_;
+    }
+} else{
+    open (C, "<$inputFile");
+    while(<C>){
+        chop;
+        push @content, $_;
+    }
+    close(C);
+}
+
+$_ = $content[0];
+
+if($mode eq "nativemodis"){
+    foreach $_ (@content){
+        @lp = split(/\./);
+        $granule = $lp[2];
+        print "${hdate}_${granule}00 $_\n";
+    }
+} elsif($mode eq "s3pdu"){
+    foreach $_ (@content){
+        @lp = split(/\_/);
+        $granule = $lp[7];
+        $granule =~ s/T/_/;
+        print "${granule} $_\n";
+    }
+} elsif($mode eq "gtproduct"){
+    foreach $_ (@content){
+        @lp = split(/\-/);
+        $granule = substr($_, 22,15);
+        print "${granule} $_\n";
+    }
+} else {
+}
+# MODIS original     nativemodis
+# S3 pdus            s3pdu
+# GT_Products        gtproduct
