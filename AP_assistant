@@ -27,7 +27,8 @@ use Time::Local;
 my @parts = split(/\//, $0);
 my $me = pop(@parts);
 
-my $basePath;
+
+my $packagePath;
 my %apDict;
 
 BEGIN{
@@ -50,12 +51,18 @@ BEGIN{
         my $lar = @_[0];
         my $host = `hostname`;
         chop ($host);
+        my $home = $ENV{HOME};
+        my @parts = split(/\//, $0);
+        pop @parts;
+        my $myPath = join("/", @parts);
 
     
         if(($host =~/alice/) or ($host=~/spectre/)){
             $site = "UOL";
             $basepath = "/data/atsr";
-            $bundlePath = "SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
+            $exec_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/BIN";
+            $tctl_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/CTL_FILES_TEMPLATES";
+            $bundlePath = "$basepath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
             $qtag = "PBS";
             $pythonx = "python";
             $qsubmit = "qsub -W x=resfailpolicy:requeue";
@@ -66,7 +73,9 @@ BEGIN{
         } elsif($host =~/rl.ac.uk/){
             $site = "CEMS";
             $basepath = "/group_workspaces/cems/leicester";
-            $bundlePath = "SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
+            $bundlePath = "$basepath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
+            $exec_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/BIN";
+            $tctl_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/CTL_FILES_TEMPLATES";
             $pythonx = "python2.7";
             $qtag = "BSUB";
             $qsubmit = "bsub -r <";
@@ -77,7 +86,9 @@ BEGIN{
         } elsif($host =~/acri.fr/){
             $site = "CTCP";
             $basepath = "/a/trouver";
-            $bundlePath = "SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
+            $bundlePath = "$basepath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
+            $exec_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/BIN";
+            $tctl_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/CTL_FILES_TEMPLATES";
             $pythonx = "python";
             $qtag = "BSUB";
             $qsubmit = "bsub ";
@@ -85,11 +96,29 @@ BEGIN{
             $qquery = "bjobs";
             $err_memory = "Pas suffi memoir";
             $err_walltime = "job killed after reaching LSF run time limit";
+        } elsif($host =~/iceberg/) {
+            print "In Iceberg, University of Sheffield.\n";
+            # this should be a path to install as a local installation
+            $site = "UOS";
+            $basepath = "$home";
+            $bundlePath = "$myPath";
+            $exec_path = "$basePath/bin";
+            $tctl_path = "$basePath/ctl_files";
+            $pythonx = "python";
+            $qtag = "\$";
+            $qsubmit = "qsub";
+            $qdelete = "qdel";
+            $qquery = "Qstat";
+            $err_memory = "Can not allocate memory";
+            $err_walltime = "job killed after reaching LSF run time limit";
         } else {
+            print "In no-idea-where-I-am mode\n";
             # this should be a path to install as a local installation
             $site = "node";
-            $basepath = "/path/to/nowhere";
-            $bundlePath = "SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
+            $basepath = "$home";
+            $bundlePath = "$myPath";
+            $exec_path = "$basePath/bin";
+            $tctl_path = "$basePath/ctl_files";
             $pythonx = "python";
             $qtag = "disabled";
             $qsubmit = "ksub";
@@ -100,12 +129,12 @@ BEGIN{
         }
     
         open(RC, ">$lar/.automatedProcessing");
-        $bundlePath = "SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
+#        $bundlePath = "SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
         print RC <<"RUNPIPELINERC";
 # .automatedProcessing
 # Mostly definitions which are site dependent
 
-# This one can be UOL, CEMS or something to come
+# This one can be UOL, CEMS, UOS, or something else to come
 site=$site
 
 # The path to where SOFTWARE/SCRIPTS is located
@@ -113,6 +142,12 @@ basePath=$basepath
 
 # The full path to where this "package" is located
 appath=$bundlePath
+
+# The full path to where executables are to be found
+exec_path=$exec_path
+
+# The full path to where template control files are to be found
+tctl_path=$tctl_path
 
 # The path to where runPipe area is located
 # You can change this path to suit your needs
@@ -143,19 +178,26 @@ RUNPIPELINERC
 
     my $home = $ENV{HOME};
     my $rcfile = "$home/.automatedProcessing";
+    my @parts = split(/\//, $0);
+    pop @parts;
+    my $myPath = join("/", @parts);
     if(!-e $rcfile){
+        print "$0 packagePath $myPath\n";
         print "Creating $rcfile \n";
         my $rp = `which AP_runPipeline`;
         chop $rp;
         &createRc($home);
+        print "Please examine $rcfile to make sure no inconsistencies are found\n";
+	exit;
     }
     %apDict = &getFromRc($rcfile);
-    $basePath = $apDict{"basePath"};
+    $packagePath = $apDict{"appath"};
     $thissite = $apDict{"site"};
 #    print "basepath: $basePath\n";
 }
 
-use lib "$basePath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
+use lib "$packagePath";
+#use lib "$basePath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
 #use ap_timex qw(&isLeap &daysInMonth &daysInYear &listOfDates &datesBetween &segmentedDates dateToDoy);
 use ap_timex;
 use ap_predef;

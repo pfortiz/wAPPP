@@ -19,7 +19,7 @@ use Time::Local;
 my @parts = split(/\//, $0);
 my $me = pop(@parts);
 
-my $basePath;
+my $packagePath;
 my %apDict;
 
 BEGIN{
@@ -43,11 +43,10 @@ BEGIN{
         die "Please run AP_assistant first even from /tmp\n";
     }
     %apDict = &getFromRc($rcfile);
-    $basePath = $apDict{"basePath"};
-#    print "basepath: $basePath\n";
+    $packagePath = $apDict{"appath"};
 }
 
-use lib "$basePath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
+use lib "$packagePath";
 #use ap_timex qw(&isLeap &daysInMonth &daysInYear &listOfDates &datesBetween &segmentedDates dateToDoy);
 use ap_timex;
 use ap_predef;

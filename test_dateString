@@ -3,7 +3,7 @@
 
 use Time::Local;
 
-my $basePath;
+my $packagePath;
 my %apDict;
 
 BEGIN{
@@ -29,13 +29,13 @@ BEGIN{
         die "Please run AP_assistant at least once.\n";
     }
     %apDict = &getFromRc($rcfile);
-    $basePath = $apDict{"basePath"};
+    $packagePath = $apDict{"appath"};
 }
 
 #use timex qw(&dateToDoy &isLeap &daysInMonth &daysInYear &listOfDates
 #&datesBetween &segmentedDates);
 
-use lib "$basePath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
+use lib "$packagePath";
 use ap_timex;
 
 if($#ARGV < 0){
