@@ -586,7 +586,7 @@ $tn.parameters.end
 $tn.local.begin
 # you can edit lines below this one
 echo about to submit the processing pipeline to the grid
-qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave
+qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave DONE_STRACER=DONE_TRACER FAIL_STRACER=FAIL_TRACER RNNG_STRACER=RNNG_TRACER
 # you can edit lines above this one
 $tn.local.end
 
@@ -600,15 +600,15 @@ exec MAKE_CONTROL TEMPLATE_CONTROL YYY-SMM-SDD > CONTROL_FILE
 sexec PROCESSOR < CONTROL_FILE > LOG_FILE
 assignto hasDone command EXAMINE_DONE LOG_FILE -z
 if hasDone gt 0 then
-    sexec touch DONE_TRACER
+    sexec touch DONE_STRACER
     sexec rm CONTROL_FILE
     # uncomment next line to compress the log-file
     # sexec gzip LOG_FILE
     # if you never need them, get rid of the log-file
     # sexec rm LOG_FILE
-    # sexec touch DONE_FILE
+    # sexec touch DONE_STRACER
 else
-    sexec touch FAIL_TRACER
+    sexec touch FAIL_STRACER
 endif
 
 # you can edit lines above this one
@@ -638,7 +638,7 @@ LOG_FILE = DAILY_PATH/verify_PRODUCT_CODE_YYY_SMM_SDD.log
 $tn.parameters.end
 
 $tn.local.begin
-qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave
+qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave DONE_STRACER=DONE_TRACER FAIL_STRACER=FAIL_TRACER RNNG_STRACER=RNNG_TRACER
 $tn.local.end
 
 $tn.parallel.begin
@@ -676,15 +676,15 @@ $tn.parameters.end
 
 $tn.local.begin
 echo about to submit the processing pipeline to the grid
-qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave
+qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave DONE_STRACER=DONE_TRACER FAIL_STRACER=FAIL_TRACER RNNG_STRACER=RNNG_TRACER
 $tn.local.end
 
 $tn.parallel.begin
 assignto ftpResult command MONTY DOWNLOADER FTP_CONFIG ($tn.remote_path) ($tn.local_path) ($tn.pattern)
 if ftpResult eq Successful-ftp then
-    sexec touch DONE_TRACER
+    sexec touch DONE_STRACER
 else
-    sexec touch FAIL_TRACER
+    sexec touch FAIL_STRACER
 endif
 $tn.parallel.end
 FF_FILE
@@ -718,15 +718,15 @@ $tn.parameters.end
 
 $tn.local.begin
 echo about to submit the processing pipeline to the grid
-qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave
+qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave DONE_STRACER=DONE_TRACER FAIL_STRACER=FAIL_TRACER RNNG_STRACER=RNNG_TRACER
 $tn.local.end
 
 $tn.parallel.begin
 assignto ftpResult command MONTY UPLOADER ($tn.local_path) ($tn.remote_path) ($tn.pattern)
 if ftpResult eq Successful-ftp then
-    sexec touch DONE_TRACER
+    sexec touch DONE_STRACER
 else
-    sexec touch FAIL_TRACER
+    sexec touch FAIL_STRACER
 endif
 
 $tn.parallel.end
@@ -776,8 +776,8 @@ sexec X_WRAPPER "rsync ($tn.rsync_flags) --include ($tn.pattern) ($tn.source_pat
 # qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave
 $tn.local.end
 
-$tn.parallel.end
-#sexec X_WRAPPER "rsync $rsync_flags --include $pattern $source_path $dest_path" DONE_TRACER &
+$tn.parallel.begin
+#sexec X_WRAPPER "rsync $rsync_flags --include $pattern $source_path $dest_path" DONE_STRACER &
 $tn.parallel.end
 
 FF_FILE
@@ -812,9 +812,9 @@ $tn.parameters.end
 $tn.local.begin
 assignto hasData command GET_PATH_CONTENT path=($tn.data_path) fp=($tn.file_pattern) dt=($tn.tracer_file) -count
 if hasData gt 0 then
-    sexec touch DONE_TRACER
+    sexec touch DONE_STRACER
 else
-    sexec touch FAIL_TRACER
+    sexec touch FAIL_STRACER
 endif
 $tn.local.end
 
@@ -835,7 +835,7 @@ $tn.parameters.end
 $tn.local.begin
 # you can edit lines below this one
 echo about to submit the processing pipeline to the grid
-qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave
+qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave DONE_STRACER=DONE_TRACER FAIL_STRACER=FAIL_TRACER RNNG_STRACER=RNNG_TRACER
 $tn.local.end
 
 $tn.parallel.begin
@@ -1277,7 +1277,7 @@ FILE_INPUT
                 open(F, ">$file");
                 print F <<"FILE_INPUT";
 echo about to submit the processing pipeline to the grid
-qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave
+qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave DONE_STRACER=DONE_TRACER FAIL_STRACER=FAIL_TRACER RNNG_STRACER=RNNG_TRACER
 FILE_INPUT
                 close(F);
             }
@@ -1293,15 +1293,15 @@ exec MAKE_CONTROL TEMPLATE_CONTROL YYY-SMM-SDD > CONTROL_FILE
 sexec PROCESSOR < CONTROL_FILE > LOG_FILE
 assignto hasDone command EXAMINE_DONE LOG_FILE -z
 if hasDone gt 0 then
-    sexec touch DONE_TRACER
+    sexec touch DONE_STRACER
     sexec rm CONTROL_FILE
     # uncomment next line to compress the log-file
     # sexec gzip LOG_FILE
     # if you never need them, get rid of the log-file
     # sexec rm LOG_FILE
-    # sexec touch DONE_FILE
+    # sexec touch DONE_STRACER
 else
-    sexec touch FAIL_TRACER
+    sexec touch FAIL_STRACER
 endif
 
 FILE_INPUT
@@ -1357,7 +1357,7 @@ FILE_INPUT
             if(!-e $file){
                 open(F, ">$file");
                 print F <<"FILE_INPUT";
-qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave
+qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave DONE_STRACER=DONE_TRACER FAIL_STRACER=FAIL_TRACER RNNG_STRACER=RNNG_TRACER
 FILE_INPUT
                 close(F);
             }
@@ -1417,7 +1417,7 @@ FILE_INPUT
                 open(F, ">$file");
                 print F <<"FILE_INPUT";
 echo about to submit the processing pipeline to the grid
-qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave
+qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave DONE_STRACER=DONE_TRACER FAIL_STRACER=FAIL_TRACER RNNG_STRACER=RNNG_TRACER
 FILE_INPUT
                 close(F);
             }
@@ -1427,9 +1427,9 @@ FILE_INPUT
                 print F <<"FILE_INPUT";
 assignto ftpResult command MONTY DOWNLOADER FTP_CONFIG $remPath $localPath $pattern
 if ftpResult eq Successful-ftp then
-    sexec touch DONE_TRACER
+    sexec touch DONE_STRACER
 else
-    sexec touch FAIL_TRACER
+    sexec touch FAIL_STRACER
 endif
 FILE_INPUT
                 close(F);
@@ -1480,7 +1480,7 @@ FILE_INPUT
                 open(F, ">$file");
                 print F <<"FILE_INPUT";
 echo about to submit the processing pipeline to the grid
-qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave
+qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave DONE_STRACER=DONE_TRACER FAIL_STRACER=FAIL_TRACER RNNG_STRACER=RNNG_TRACER
 FILE_INPUT
                 close(F);
             }
@@ -1490,9 +1490,9 @@ FILE_INPUT
                 print F <<"FILE_INPUT";
 assignto ftpResult command MONTY UPLOADER $localPath $remPath $pattern
 if ftpResult eq Successful-ftp then
-    sexec touch DONE_TRACER
+    sexec touch DONE_STRACER
 else
-    sexec touch FAIL_TRACER
+    sexec touch FAIL_STRACER
 endif
 FILE_INPUT
                 close(F);
@@ -1525,7 +1525,7 @@ FILE_INPUT
                 print F <<"FILE_INPUT";
 echo about to start rsync from the main nodes
 $mkdirifneeded
-sexec X_WRAPPER "rsync $rsync_flags --include $pattern $source_path $dest_path" DONE_TRACER &
+sexec X_WRAPPER "rsync $rsync_flags --include $pattern $source_path $dest_path" DONE_STRACER &
 # uncomment the next line if you can run rsync from the nodes
 # qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave
 FILE_INPUT
@@ -1535,12 +1535,12 @@ FILE_INPUT
             if(!-e $file){
                 open(F, ">$file");
                 print F <<"FILE_INPUT";
-sexec X_WRAPPER "rsync $rsync_flags --include $pattern $source_path $dest_path" DONE_TRACER &
+sexec X_WRAPPER "rsync $rsync_flags --include $pattern $source_path $dest_path" DONE_STRACER &
 
 #if rsyncResult eq Successful-rsync then
-#    sexec touch DONE_TRACER
+#    sexec touch DONE_STRACER
 #else
-#    sexec touch FAIL_TRACER
+#    sexec touch FAIL_STRACER
 #endif
 FILE_INPUT
                 close(F);
@@ -1571,9 +1571,9 @@ FILE_INPUT
                 print F <<"FILE_INPUT";
 assignto hasData command GET_PATH_CONTENT path=$uddata_path fp=$udfile_pattern dt=$udtracer -count
 if hasData gt 0 then
-    sexec touch DONE_TRACER
+    sexec touch DONE_STRACER
 else
-    sexec touch FAIL_TRACER
+    sexec touch FAIL_STRACER
 endif
 FILE_INPUT
                 close(F);
@@ -1601,7 +1601,7 @@ FILE_INPUT
                 open(F, ">$file");
                 print F <<"FILE_INPUT";
 echo about to submit the processing pipeline to the grid
-qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave
+qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave DONE_STRACER=DONE_TRACER FAIL_STRACER=FAIL_TRACER RNNG_STRACER=RNNG_TRACER
 FILE_INPUT
                 close(F);
             }

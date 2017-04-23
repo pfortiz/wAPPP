@@ -101,7 +101,7 @@ use Time::Local;
 # in a calendar month, and that depends on whether the year is leap or normal
 #
 
-my $basePath;
+my $packagePath;
 my %apDict;
 
 BEGIN{
@@ -127,13 +127,13 @@ BEGIN{
         die "Please run AP_assistant at least once.\n";
     }
     %apDict = &getFromRc($rcfile);
-    $basePath = $apDict{"basePath"};
+    $packagePath = $apDict{"appath"};
 }
 
 #use timex qw(&dateToDoy &isLeap &daysInMonth &daysInYear &listOfDates
 #&datesBetween &segmentedDates);
 
-use lib "$basePath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
+use lib "$packagePath";
 use ap_timex;
 
 
@@ -148,7 +148,8 @@ my @parts = split(/\//, $0);
 my $me = pop(@parts);
 my $farg = @ARGV[0];
 
-$fullRunPipeline = sprintf("%s/%s/AP_runPipeline", $apDict{"basePath"}, $apDict{"appath"});
+$fullRunPipeline = sprintf("%s/AP_runPipeline", $packagePath);
+#$fullRunPipeline = sprintf("%s/%s/AP_runPipeline", $apDict{"basePath"}, $apDict{"appath"});
 
 if($#ARGV ==  0 and $farg eq "-init"){
     &create_td_sample_and_readme();
@@ -157,7 +158,6 @@ if($#ARGV ==  0 and $farg eq "-init"){
     &makeStubs();
     exit;
 } elsif($#ARGV < 1){
-#    print "$apDict{'site'} $apDict{'basePath'} $fullRunPipeline\n";
 #    foreach $_ (keys %apDict){ print "A-P dictionary: $_ $apDict{$_}\n"; }
 #    print "Usage:  $me -init\n";
 #    print "Usage:  $me -createStubs\n";

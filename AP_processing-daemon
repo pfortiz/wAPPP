@@ -30,7 +30,7 @@ use Time::Local;
 # in a calendar month, and that depends on whether the year is leap or normal
 #
 
-my $basePath;
+my $packagePath;
 my %apDict;
 
 BEGIN{
@@ -54,10 +54,10 @@ BEGIN{
         die "Please run AP_assistant first\n";
     }
     %apDict = &getFromRc($rcfile);
-    $basePath = $apDict{"basePath"};
+    $packagePath = $apDict{"appath"};
 }
 
-use lib "$basePath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
+use lib "$packagePath";
 
 #use timex qw(&isLeap &daysInMonth &daysInYear &listOfDates &datesBetween &segmentedDates);
 use ap_timex;
