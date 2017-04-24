@@ -110,10 +110,15 @@ if(-e "${pName}FtpDetails"){
     $ftpConfig = "TASK_PATH/${pName}FtpDetails";
 }
 
-$which = sprintf("SITE_PATH/%s", $apDict{"appath"});
-$apPath = sprintf("SITE_PATH/%s", $apDict{"appath"});
-$which = "AP_PATH";
-$which = sprintf("%s/%s", $apDict{"basePath"}, $apDict{"appath"});
+#$which = sprintf("SITE_PATH/%s", $apDict{"appath"});
+#$apPath = sprintf("SITE_PATH/%s", $apDict{"appath"});
+$apPath = $apDict{"appath"};
+
+#$which = "AP_PATH";
+#$which = sprintf("%s/%s", $apDict{"basePath"}, $apDict{"appath"});
+
+$which = $apDict{"appath"};
+
 $localPython = $apDict{"python"};
 
 my $runPipeline = "$which/AP_runPipeline";
