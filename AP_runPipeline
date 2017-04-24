@@ -1405,7 +1405,7 @@ HEADER
             } else {
                 $queueName = "long-serial";
             }
-            $jobName =  "${TAG}-sd-${loopycounter}";
+            $jobName =  "${procedureId}-${loopycounter}";
             $walltime = &decHourToHHMM($qwalltime);
             print LOG "$ts bsub $queueFile\n";
 # TODO properly. queue name depends on walltime now
