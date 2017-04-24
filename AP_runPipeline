@@ -304,6 +304,16 @@
 #  transformed into a "variable", and users should be able to use varName
 #  in their scripts and rp will translate that at run-time.
 
+#  April 24, 2017
+#  command line variables, due to their dynamic nature, need to be stored as a
+#  variable itself so that it can be used to pass them to other stages of the
+#  processing chain. This will make other component agnostic about which
+#  command line variables has been passed to runPipeline.
+#  The variable shall be called CL_VARIABLES
+#
+#  There is an issue in which CL_VARIABLES are replaced automatically. I
+#  need to deactivate that feature during execution.
+#
 
 
 use Time::Local;
@@ -404,6 +414,7 @@ $QCLEAN    = 16;
 $slave = 0;
 $versyntax = 0;
 
+$CL_VARIABLES = "";
 foreach $_ (@ARGV){
     ($aname, $avalue) = split(/=/);
 #    print STDERR "examining arg: $_   $aname, $avalue\n";
@@ -427,6 +438,12 @@ foreach $_ (@ARGV){
         # indices like H17V12, etc.  There is really no restriction as to
         # what it is possible to achieve with these extra variables
 
+	if($CL_VARIABLES eq ""){
+            $CL_VARIABLES = $_;
+        } else {
+            $CL_VARIABLES .= " $_";
+        }
+        $dvars{"CL_VARIABLES"} = 1;
 
     } elsif(lc($aname) eq "-walltime"){
         $clWalltime = $avalue;
@@ -1061,7 +1078,7 @@ while(<P>){
         } elsif( $p eq "|"){
             $xph .= "$p ";
             
-        } elsif( $dvars{$p} ne "" and $p ne "WALLTIME"){
+        } elsif( $dvars{$p} ne "" and $p ne "WALLTIME" and $p ne "CL_VARIABLES"){
                 #  we don't replace walltime right away, that's left for
                 #  real-time replacement as walltime can be altered in
                 #  loops
@@ -1083,6 +1100,7 @@ while(<P>){
         }
     }
     $tphrase = join(" ", @parts);
+#print "xph = $xph\n";
     push @$taskCrit, $tcriterion;
     push @$taskComm, $xph;
 #    print "$tkind // $tcriterion // $tphrase\n";
@@ -1136,6 +1154,8 @@ for( $tt = 0; $tt < $nTasks; $tt++){
 #        print LOG "tracer: $kind $lastWord\n";
 #    }
     $fullStatement = "$tid $kind @allwords";
+#print "Deriving allwords $kind @allwords\n";
+#print "Deriving akargs $kind @akargs\n";
     if($kind eq "loop"){
         $_ = $tSteps;
         @akargs = split; 
@@ -1289,15 +1309,19 @@ for( $tt = 0; $tt < $nTasks; $tt++){
         }
     }
     
-    # this is not always necessary nor desirable here. It should be done on
-    # bsed on the $kind of operation. It does not applies to variables
+    # this is not always necessary nor desirable here. It should be done
+    # based on the $kind of operation. It does not applies to variables
     # However, by defining an unchanged variable, that variable can then be
     # used to replace known  values once arguments have been recovered
     $originalSteps = $tSteps;
     for $Lehrheft (keys %dvars){
+        if($Lehrheft eq "CL_VARIABLES") { next; }
         $tSteps =~ s/$Lehrheft/$$Lehrheft/g;
         $tStepsShrt =~ s/$Lehrheft/$$Lehrheft/g;
     }
+    # Only at this point we replace the CL_VARIABLES...
+    $tSteps =~ s/CL_VARIABLES/$CL_VARIABLES/g;
+    $tStepsShrt =~ s/CL_VARIABLES/$CL_VARIABLES/g;
 #    for $Lehrheft (keys %dlists){
 #        $tSteps =~ s/$Lehrheft/$$Lehrheft/g;
 #        $tStepsShrt =~ s/$Lehrheft/$$Lehrheft/g;
@@ -1831,6 +1855,7 @@ HEADER
             @sparts = split(/$pattern/, $istring);
             $oval = $sparts[$ordinal];
             $$newvar = $oval;
+#print "$newvar = $$newvar\n";
         } elsif ($akti eq "list"){
             @$newvar = @akargs;
             print LOG "New list $newvar: @$newvar\n";
