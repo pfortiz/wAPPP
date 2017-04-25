@@ -81,7 +81,7 @@ BEGIN{
             $qsubmit = "bsub -r <";
             $qdelete = "bkill";
             $qquery = "bjobs";
-            $err_memory = "????? allocate memory";
+            $err_memory = "job killed after reaching LSF memory usage limit."
             $err_walltime = "job killed after reaching LSF run time limit";
         } elsif($host =~/acri.fr/){
             $site = "CTCP";
