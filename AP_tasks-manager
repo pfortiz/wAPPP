@@ -165,6 +165,12 @@ if($#ARGV ==  0 and $farg eq "-init"){
     die "Usage:  $me tasks-to-run-file date-definitions [extraDim=filename] [-dummyRun]\n\n";
 }
 
+$killMe = "./kill_$me";
+open(K, ">$killMe");
+print K "# use: bash $killMe\n";
+print K "kill -9 $$\n";
+close(K);
+
 @argos = @ARGV;
 $cwd = `pwd`;
 chop($cwd);

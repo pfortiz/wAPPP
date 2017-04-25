@@ -59,10 +59,10 @@ BEGIN{
     
         if(($host =~/alice/) or ($host=~/spectre/)){
             $site = "UOL";
-            $basepath = "/data/atsr";
+            $basePath = "/data/atsr";
             $exec_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/BIN";
             $tctl_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/CTL_FILES_TEMPLATES";
-            $bundlePath = "$basepath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
+            $bundlePath = "$basePath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
             $qtag = "PBS";
             $pythonx = "python";
             $qsubmit = "qsub -W x=resfailpolicy:requeue";
@@ -72,8 +72,8 @@ BEGIN{
             $err_walltime = "job killed: walltime";
         } elsif($host =~/rl.ac.uk/){
             $site = "CEMS";
-            $basepath = "/group_workspaces/cems/leicester";
-            $bundlePath = "$basepath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
+            $basePath = "/group_workspaces/cems/leicester";
+            $bundlePath = "$basePath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
             $exec_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/BIN";
             $tctl_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/CTL_FILES_TEMPLATES";
             $pythonx = "python2.7";
@@ -85,8 +85,8 @@ BEGIN{
             $err_walltime = "job killed after reaching LSF run time limit";
         } elsif($host =~/acri.fr/){
             $site = "CTCP";
-            $basepath = "/a/trouver";
-            $bundlePath = "$basepath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
+            $basePath = "/a/trouver";
+            $bundlePath = "$basePath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
             $exec_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/BIN";
             $tctl_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/CTL_FILES_TEMPLATES";
             $pythonx = "python";
@@ -100,7 +100,7 @@ BEGIN{
             print "In Iceberg, University of Sheffield.\n";
             # this should be a path to install as a local installation
             $site = "UOS";
-            $basepath = "$home";
+            $basePath = "$home";
             $bundlePath = "$myPath";
             $exec_path = "$basePath/bin";
             $tctl_path = "$basePath/ctl_files";
@@ -115,7 +115,7 @@ BEGIN{
             print "In no-idea-where-I-am mode\n";
             # this should be a path to install as a local installation
             $site = "node";
-            $basepath = "$home";
+            $basePath = "$home";
             $bundlePath = "$myPath";
             $exec_path = "$basePath/bin";
             $tctl_path = "$basePath/ctl_files";
@@ -138,7 +138,7 @@ BEGIN{
 site=$site
 
 # The path to where SOFTWARE/SCRIPTS is located
-basePath=$basepath
+basePath=$basePath
 
 # The full path to where this "package" is located
 appath=$bundlePath
@@ -151,7 +151,7 @@ tctl_path=$tctl_path
 
 # The path to where runPipe area is located
 # You can change this path to suit your needs
-historyPath=$basepath/GT_HISTORY
+historyPath=$basePath/GT_HISTORY
 
 #---------------------------------------------------------------
 # These definitions deal with parallel processing site-depending
@@ -193,7 +193,7 @@ RUNPIPELINERC
     %apDict = &getFromRc($rcfile);
     $packagePath = $apDict{"appath"};
     $thissite = $apDict{"site"};
-#    print "basepath: $basePath\n";
+#    print "basePath: $basePath\n";
 }
 
 use lib "$packagePath";

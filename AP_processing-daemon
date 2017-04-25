@@ -75,6 +75,13 @@ if($#ARGV < 0){
     die "Usage:  $me processing-file]\n\n";
 }
 
+
+$killMe = "./kill_$me";
+open(K, ">$killMe");
+print K "# use: bash $killMe\n";
+print K "kill -9 $$\n";
+close(K);
+
 $processingFile = shift(@ARGV);
 if(!-e $processingFile){
     die "$processingFile does not exist. Dying...\n";
