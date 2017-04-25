@@ -327,9 +327,11 @@ $barebones was created in $project_name.
 
 Please 'cd $project_name' and edit $barebones at will.
 
-Once you have finished editing and you are satisfied that the project contains all necessary information run from the current directory ($newdir):
+Once you have finished editing and you are satisfied that the project contains
+all necessary information run:
 
 > AP_assistant $barebones
+from the current directory ($newdir)
 
 AP_assistant will create a much more extended file for you to edit (at
 will) entering every little detail needed to fully create.

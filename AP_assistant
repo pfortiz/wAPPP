@@ -132,6 +132,7 @@ BEGIN{
             $err_memory = "Kein Memory";
             $err_walltime = "job killed after reaching LSF run time limit";
         }
+
     
         open(RC, ">$lar/.automatedProcessing");
 #        $bundlePath = "SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
@@ -198,6 +199,11 @@ RUNPIPELINERC
     %apDict = &getFromRc($rcfile);
     $packagePath = $apDict{"appath"};
     $thissite = $apDict{"site"};
+    $historyPath = $apDict{"historyPath"};
+    $basePath = $apDict{"basePath"};
+print "BasePath = $basePath\n";
+print "history = $history\n";
+print "historyPath = $historyPath\n";
 #    print "basePath: $basePath\n";
 }
 
@@ -571,6 +577,7 @@ print FF "# is provided as a file. See examples or documentation.\n";
                 print FF "$tn.type=$taty\n";
                 if($taty eq "proc" ){
     
+print "historyPath.proc = $historyPath\n";
                     print FF <<"FF_FILE";
 $tn.atMost=*
 
@@ -583,7 +590,7 @@ $tn.tempCtlFile=$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/CTL_FILES_TEMPLATES/LEI
 
 $tn.parameters.begin
 # you can edit lines below this one
-HISTORY_DIR = $basePath/$history
+HISTORY_DIR = $historyPath
 DAILY_PATH = HISTORY_DIR/YYY/SMM/SDD
 # you can edit lines above this one
 $tn.parameters.end
@@ -634,7 +641,7 @@ $tn.product_code=
 
 $tn.parameters.begin
 # you can edit lines below this one
-HISTORY_DIR = $basePath/$history
+HISTORY_DIR = $historyPath
 DAILY_PATH = HISTORY_DIR/YYY/SMM/SDD
 PRODUCT_CODE = ($tn.product_code)
 PATH_TO_PRODUCT = ($tn.basepath)
@@ -1271,8 +1278,9 @@ sub makeStubs(){
             $file = "$dire/parameters.rpl";
             if(!-e $file){
                 open(F, ">$file");
+print "BasePath = $basePath\n";
                 print F <<"FILE_INPUT";
-HISTORY_DIR = $basePath/$history
+HISTORY_DIR = $historyPath
 DAILY_PATH = HISTORY_DIR/YYY/SMM/SDD
 FILE_INPUT
                 close(F);
@@ -1350,7 +1358,7 @@ FILE_INPUT
                 $udvalue = $$defs{"product_code"};
                 $udbasePath = $$defs{"base_path"};
                 print F <<"FILE_INPUT";
-HISTORY_DIR = $basePath/$history
+HISTORY_DIR = $historyPath
 DAILY_PATH = HISTORY_DIR/YYY/SMM/SDD
 PRODUCT_CODE = $udvalue
 PATH_TO_PRODUCT = $udbasePath
