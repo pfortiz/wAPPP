@@ -642,11 +642,6 @@ while(){
             
             ($C_year, $C_mon, $C_mday) = split(/-/,$dateToProcess);
     
-            # contrived way to obtain the day of the week for the date:
-            # X_wday
-            $dateUnixTime = timelocal(12, 0, 0, $C_mday, $C_mon-1, $C_year);
-            my ($X_sec,$X_min,$X_hour,$X_mday,$X_mon,$X_year,$X_wday,$X_yday,$X_isdst) =
-                                                        localtime($dateUnixTime);
             $C_smon = sprintf("%02d", $C_mon);
             $C_smday = sprintf("%02d", $C_mday);
             $DATE = "${C_year}-${C_smon}-$C_smday";
@@ -758,6 +753,11 @@ while(){
                     }
                     if($dow ne "*"){
                         if(int($dow) != int($X_wday) ){
+                            # contrived way to obtain the day of the week for
+                            # the date: X_wday
+                            $dateUnixTime = timelocal(12, 0, 0, $C_mday, $C_mon-1, $C_year);
+
+                            my ($X_sec,$X_min,$X_hour,$X_mday,$X_mon,$X_year,$X_wday,$X_yday,$X_isdst) = localtime($dateUnixTime);
                             # skip this task altogether
                             print "Skip task $task, wrong day: $X_mday req: $rday\n";
                             next;
