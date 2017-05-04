@@ -1415,11 +1415,14 @@ HEADER
 #$qtag -q $queueName
 #$qtag -o %J.log
 #$qtag -e %J.err
-#$qtag -R "rusage[mem=$memory]"
+#$qtag -M $memory
 #$qtag -n 1
 #$qtag -W $walltime
 #$qtag -J ${jobName}
 HEADER
+# old way to specify max memory. PFO May 4, 2017
+#$qtag -R "rusage[mem=$memory]"
+
             if($mode eq "monthly"){
                 print B "#$qtag -t [1-$DAYSINMONTH]\n";
             }
