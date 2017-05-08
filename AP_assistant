@@ -654,7 +654,7 @@ qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
 $tn.local.end
 
 $tn.parallel.begin
-sexec VERIFIER PATH_TO_PRODUCT/YYY/SMM/SDD/PRODUCT  > LOG_FILE
+sexec VERIFIER PATH_TO_PRODUCT/YYY/SMM/SDD/PRODUCT_CODE  > LOG_FILE
 $tn.parallel.end
 
 FF_FILE
@@ -1378,7 +1378,7 @@ FILE_INPUT
             if(!-e $file){
                 open(F, ">$file");
                 print F <<"FILE_INPUT";
-sexec VERIFIER PATH_TO_PRODUCT/YYY/SMM/SDD/PRODUCT  > LOG_FILE
+sexec VERIFIER PATH_TO_PRODUCT/YYY/SMM/SDD/PRODUCT_CODE  > LOG_FILE
 FILE_INPUT
                 close(F);
             }
