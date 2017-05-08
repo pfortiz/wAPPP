@@ -133,6 +133,7 @@ my $locateUnprocessed = "$which/AP_locateUnprocessed";
 my $downloader = "$which/AP_ftpDownload.py";
 my $uploader = "$which/AP_ftpUpload.py";
 my $wrapper = "$which/AP_xwrapper";
+my $verifier = "$which/AP_verifyGtProducts.py";
 
 open(B, "<$pipeParams");
 while(<B>){
@@ -161,6 +162,7 @@ GET_PATH_CONTENT = $contentRetriever
 DOWNLOADER = $downloader
 UPLAODER = $uploader
 X_WRAPPER = $wrapper
+VERIFIER = $verifier
 TASK_PATH = $cwd
 MONTY = $localPython
 
@@ -230,6 +232,7 @@ LOCATE_UNPROCESSED = $locateUnprocessed
 DOWNLOADER = $downloader
 UPLAODER = $uploader
 X_WRAPPER = $wrapper
+VERIFIER = $verifier
 MONTY = $localPython
 
 TASK_PATH = $cwd
