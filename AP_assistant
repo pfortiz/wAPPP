@@ -655,6 +655,7 @@ $tn.local.end
 
 $tn.parallel.begin
 sexec MONTY VERIFIER PATH_TO_PRODUCT/YYY/SMM/SDD/PRODUCT_CODE  > LOG_FILE
+sexec touch DONE_TRACER
 $tn.parallel.end
 
 FF_FILE
@@ -1379,6 +1380,7 @@ FILE_INPUT
                 open(F, ">$file");
                 print F <<"FILE_INPUT";
 sexec MONTY VERIFIER PATH_TO_PRODUCT/YYY/SMM/SDD/PRODUCT_CODE  > LOG_FILE
+sexec touch DONE_TRACER
 FILE_INPUT
                 close(F);
             }
