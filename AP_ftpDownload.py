@@ -79,7 +79,7 @@ try:
     ftp = FTP(site)
 except Exception, e:
     print "ftp-error", e
-    ftp.close()
+#    ftp.close()
     sys.exit()
 #    print "message after connection: ", ftp.error_reply
 
