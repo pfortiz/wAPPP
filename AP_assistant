@@ -735,7 +735,7 @@ qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
 $tn.local.end
 
 $tn.parallel.begin
-assignto ftpResult command MONTY UPLOADER ($tn.local_path) ($tn.remote_path) ($tn.pattern)
+assignto ftpResult command MONTY UPLOADER FTP_CONFIG ($tn.local_path) ($tn.remote_path) ($tn.pattern)
 if ftpResult eq Successful-ftp then
     sexec touch DONE_TRACER
 else
@@ -1503,7 +1503,7 @@ FILE_INPUT
             if(!-e $file){
                 open(F, ">$file");
                 print F <<"FILE_INPUT";
-assignto ftpResult command MONTY UPLOADER $localPath $remPath $pattern
+assignto ftpResult command MONTY UPLOADER FTP_CONFIG $localPath $remPath $pattern
 if ftpResult eq Successful-ftp then
     sexec touch DONE_TRACER
 else
