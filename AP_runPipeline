@@ -417,7 +417,7 @@ $versyntax = 0;
 $CL_VARIABLES = "";
 foreach $_ (@ARGV){
     ($aname, $avalue) = split(/=/);
-    print STDERR "examining arg: $_   $aname, $avalue\n";
+    print "Emma, examining arg: $_   $aname, $avalue\n";
     
     if($aname eq "-exec"){
         $execute = 1;
