@@ -1319,6 +1319,7 @@ for( $tt = 0; $tt < $nTasks; $tt++){
     # used to replace known  values once arguments have been recovered
     $originalSteps = $tSteps;
     for $Lehrheft (keys %dvars){
+        print "Emma: replacing $Lehrheft with $$Lehrheft\n";
         if($Lehrheft eq "CL_VARIABLES") { next; }
         $tSteps =~ s/$Lehrheft/$$Lehrheft/g;
         $tStepsShrt =~ s/$Lehrheft/$$Lehrheft/g;
