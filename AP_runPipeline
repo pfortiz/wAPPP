@@ -417,7 +417,7 @@ $versyntax = 0;
 $CL_VARIABLES = "";
 foreach $_ (@ARGV){
     ($aname, $avalue) = split(/=/);
-#    print STDERR "examining arg: $_   $aname, $avalue\n";
+    print STDERR "examining arg: $_   $aname, $avalue\n";
     
     if($aname eq "-exec"){
         $execute = 1;
@@ -466,6 +466,7 @@ foreach $_ (@ARGV){
         $execute = $QCLEAN;
     } elsif(lc($aname) eq "-runid"){
         $clrunid = $avalue;
+        print "Emma, -runid = ", $avalue, $clrunid
     } elsif(lc($aname) eq "-qresubmit"){
         $execute = $QRESUBMIT;
         $clWalltime = $avalue;
