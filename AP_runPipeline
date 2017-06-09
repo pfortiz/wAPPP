@@ -766,6 +766,8 @@ if($clrunid ne ""){
     $RUNID = "r0";
 }
 
+print "Emma, RUNID = $RUNID\n";
+
 $times = time;
 $times = "";
 #$RESULTS_PATH = $apDict{"runPipelinePath"};
