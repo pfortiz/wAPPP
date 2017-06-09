@@ -715,7 +715,7 @@ while(<P>){
         $val =~ s/SDD/$sday/g;
         $val =~ s/MMM/$imonth/g;
         $val =~ s/DDD/$iday/g;
-        $val =~ s/RUNID/$RUNID/g;
+#        $val =~ s/RUNID/$RUNID/g;
         $val =~ s/DAYOFYEAR/$DAYOFYEAR/g;
     }
     foreach $ciave (keys %usedKeys){
