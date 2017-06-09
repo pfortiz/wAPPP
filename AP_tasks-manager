@@ -686,13 +686,14 @@ while(){
                 print STDERR "Task: $t @$laxDim\n";
                 foreach $txd (@$laxDim){
 #                    print STDERR "TXD $txd\n";
-                    $taskDone = "$dailyDir/$t$xd$txd.Done";
-                    $taskRunning = "$dailyDir/$t$xd$txd.Running";
-                    $taskFailed = "$dailyDir/$t$xd$txd.Failed";
+                    $spDims = "$xd$txd";
+                    $taskDone = "$dailyDir/$t$spDims.Done";
+                    $taskRunning = "$dailyDir/$t$spDims.Running";
+                    $taskFailed = "$dailyDir/$t$spDims.Failed";
                     $ttracers = "DONE_TRACER=$taskDone ";
                     $ttracers .= "FAIL_TRACER=$taskFailed ";
                     $ttracers .= "RNNG_TRACER=$taskRunning";
-                    $dask = "$t$dateToProcess$xd$txd";
+                    $dask = "$t$dateToProcess$spDims";
 #                    print STDERR "Dask: $dask\n";
         
                     if($taskCompleted{$dask} == 1) { next; }
@@ -962,7 +963,8 @@ while(){
             #                }
                         }
         
-                        $runId = sprintf("-runid=r%03d", $nexec{$dask}+ 1);
+#                        $runId = sprintf("-runid=r%03d", $nexec{$dask}+ 1);
+                        $runId = "-runid=$spDims";
                         $effWT = $twt{$dask};
                         $effMM = $mxm{$dask};
                         if($addXdim == 1){
@@ -975,7 +977,7 @@ while(){
                         }
                         $suffix = "-exec -walltime=$effWT $ttracers -maxmem=$effMM -slave $runId";
                         $commando = "@cparts $dailyPl $laDate $addec $suffix";
-        
+                        print "Emma this one: $commando\n"; 
         #                print "dailyPl  = $dailyPl\n";
         #                print "COMMANDO4  = ", $commando, "\n";
         #                print "$taskStatus $t \@ $timo | $commando | $tusk\n";
