@@ -425,25 +425,6 @@ foreach $_ (@ARGV){
         open(H, ">>history");
         print H "$ts $me @argos\n";
         close(H);
-    } elsif(/=/){ # definition of a variable, which will be transformed
-                  #to UPPER case.
-                  # We should do the same as when assigning a variable
-        ($vname, $vvalue) = split(/=/);
-        $dvars{$vname} = 1;
-        $$vname = $vvalue;
-
-        # this works, and it gives runPipeline a much broader scope than
-        # handling just time, as these variables can be used to list
-        # stations of a given network, (longitude/latitude) pairs, spatial
-        # indices like H17V12, etc.  There is really no restriction as to
-        # what it is possible to achieve with these extra variables
-
-	if($CL_VARIABLES eq ""){
-            $CL_VARIABLES = $_;
-        } else {
-            $CL_VARIABLES .= " $_";
-        }
-        $dvars{"CL_VARIABLES"} = 1;
 
     } elsif(lc($aname) eq "-walltime"){
         $clWalltime = $avalue;
@@ -464,7 +445,7 @@ foreach $_ (@ARGV){
         $earlyMessage = "About to extract some queue stats";
     } elsif(lc($aname) eq "-clean"){
         $execute = $QCLEAN;
-    } elsif(lc($aname) eq "-runid"){
+    } elsif($aname eq "-runid"){
         $clrunid = $avalue;
         print "Emma, -runid = ", $avalue, $clrunid
     } elsif(lc($aname) eq "-qresubmit"){
@@ -487,6 +468,25 @@ foreach $_ (@ARGV){
 #        }
 #        $topDir = $avalue;
 #        print "Using user-defined top directory: $topDir\n";
+    } elsif(/=/){ # definition of a variable, which will be transformed
+                  #to UPPER case.
+                  # We should do the same as when assigning a variable
+        ($vname, $vvalue) = split(/=/);
+        $dvars{$vname} = 1;
+        $$vname = $vvalue;
+
+        # this works, and it gives runPipeline a much broader scope than
+        # handling just time, as these variables can be used to list
+        # stations of a given network, (longitude/latitude) pairs, spatial
+        # indices like H17V12, etc.  There is really no restriction as to
+        # what it is possible to achieve with these extra variables
+
+	    if($CL_VARIABLES eq ""){
+            $CL_VARIABLES = $_;
+        } else {
+            $CL_VARIABLES .= " $_";
+        }
+        $dvars{"CL_VARIABLES"} = 1;
     } else {  # unknown option. Stop execution
         print "Unknown option: $aname. Quiting\n";
         exit;
