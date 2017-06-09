@@ -765,7 +765,7 @@ if($clrunid ne ""){
 #print "RUNID = $clrunid\n";
     $RUNID = $clrunid;
 } else {
-    $RUNID = "r0";
+    $RUNID = "x0";
 }
 
 print "Emma, RUNID = $RUNID\n";
