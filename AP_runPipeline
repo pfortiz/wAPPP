@@ -2007,6 +2007,17 @@ HEADER
             system ("$tSteps");
         }
 
+    } elsif($kind eq "mkdir"){
+# taskd: MKDIR absolute-path   -creates absolute-path if it doesn't exist
+        if($versyntax == 1){ next; }
+        $newFullPath = $firstWord;
+        if(-e $newFullPath){
+            print LOG "$newFullPath in the system already\n";
+        } else {
+            print LOG "$newFullPath created\n";
+            system("mkdir -p -m 775 $newFullPath"); }
+        }
+
     } elsif($kind eq "chdir"){
 # taskd: CHDIR absolute-path   -changes the directory to absolute-path
         if($versyntax == 1){ next; }

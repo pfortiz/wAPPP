@@ -605,6 +605,10 @@ $tn.local.end
 $tn.parallel.begin
 # you can edit lines below this one
 echo  Preparing for task TASK_ID
+
+# Make sure the history directory for the day is created. PFO. 2017-06-18
+mkdir DAILY_PATH
+
 # The following line is an example only, but you may need to change
 # non-standard fields in the control file
 #exec FLEX_MAKE_CONTROL TEMPLATE_CONTROL selected_year=YYY selected_month=SMM selected_day=SDD > CONTROL_FILE
@@ -654,6 +658,9 @@ qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
 $tn.local.end
 
 $tn.parallel.begin
+# Make sure the history directory for the day is created. PFO. 2017-06-18
+mkdir DAILY_PATH
+
 sexec MONTY VERIFIER PATH_TO_PRODUCT/YYY/SMM/SDD/PRODUCT_CODE  > LOG_FILE
 sexec touch DONE_TRACER
 $tn.parallel.end
@@ -1300,6 +1307,9 @@ FILE_INPUT
                 open(F, ">$file");
                 print F <<"FILE_INPUT";
 echo  Preparing for task TASK_ID
+# Make sure the history directory for the day is created. PFO. 2017-06-18
+mkdir DAILY_PATH
+
 # The following line is an example only, but you may need to change
 # non-standard fields in the control file
 #exec FLEX_MAKE_CONTROL TEMPLATE_CONTROL selected_year=YYY selected_month=SMM selected_day=SDD > CONTROL_FILE
@@ -1379,6 +1389,9 @@ FILE_INPUT
             if(!-e $file){
                 open(F, ">$file");
                 print F <<"FILE_INPUT";
+# Make sure the history directory for the day is created. PFO. 2017-06-18
+mkdir DAILY_PATH
+
 sexec MONTY VERIFIER PATH_TO_PRODUCT/YYY/SMM/SDD/PRODUCT_CODE  > LOG_FILE
 sexec touch DONE_TRACER
 FILE_INPUT
