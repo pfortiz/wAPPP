@@ -2015,7 +2015,7 @@ HEADER
             print LOG "$newFullPath in the system already\n";
         } else {
             print LOG "$newFullPath created\n";
-            system("mkdir -p -m 775 $newFullPath"); }
+            system("mkdir -p -m 775 $newFullPath");
         }
 
     } elsif($kind eq "chdir"){
