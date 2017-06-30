@@ -417,7 +417,7 @@ $versyntax = 0;
 $CL_VARIABLES = "";
 foreach $_ (@ARGV){
     ($aname, $avalue) = split(/=/);
-#    print STDERR "examining arg: $_   $aname, $avalue\n";
+#    print "Emma, examining arg: $_   $aname, $avalue\n";
     
     if($aname eq "-exec"){
         $execute = 1;
@@ -425,25 +425,6 @@ foreach $_ (@ARGV){
         open(H, ">>history");
         print H "$ts $me @argos\n";
         close(H);
-    } elsif(/=/){ # definition of a variable, which will be transformed
-                  #to UPPER case.
-                  # We should do the same as when assigning a variable
-        ($vname, $vvalue) = split(/=/);
-        $dvars{$vname} = 1;
-        $$vname = $vvalue;
-
-        # this works, and it gives runPipeline a much broader scope than
-        # handling just time, as these variables can be used to list
-        # stations of a given network, (longitude/latitude) pairs, spatial
-        # indices like H17V12, etc.  There is really no restriction as to
-        # what it is possible to achieve with these extra variables
-
-	if($CL_VARIABLES eq ""){
-            $CL_VARIABLES = $_;
-        } else {
-            $CL_VARIABLES .= " $_";
-        }
-        $dvars{"CL_VARIABLES"} = 1;
 
     } elsif(lc($aname) eq "-walltime"){
         $clWalltime = $avalue;
@@ -464,8 +445,11 @@ foreach $_ (@ARGV){
         $earlyMessage = "About to extract some queue stats";
     } elsif(lc($aname) eq "-clean"){
         $execute = $QCLEAN;
-    } elsif(lc($aname) eq "-runid"){
+    } elsif($aname eq "-runid"){
         $clrunid = $avalue;
+        $qrunid = "$_";
+        print "Emma, -runid =  $avalue $clrunid\n";
+        print "Emma: qrunid = $qrunid\n";
     } elsif(lc($aname) eq "-qresubmit"){
         $execute = $QRESUBMIT;
         $clWalltime = $avalue;
@@ -486,6 +470,25 @@ foreach $_ (@ARGV){
 #        }
 #        $topDir = $avalue;
 #        print "Using user-defined top directory: $topDir\n";
+    } elsif(/=/){ # definition of a variable, which will be transformed
+                  #to UPPER case.
+                  # We should do the same as when assigning a variable
+        ($vname, $vvalue) = split(/=/);
+        $dvars{$vname} = 1;
+        $$vname = $vvalue;
+
+        # this works, and it gives runPipeline a much broader scope than
+        # handling just time, as these variables can be used to list
+        # stations of a given network, (longitude/latitude) pairs, spatial
+        # indices like H17V12, etc.  There is really no restriction as to
+        # what it is possible to achieve with these extra variables
+
+	    if($CL_VARIABLES eq ""){
+            $CL_VARIABLES = $_;
+        } else {
+            $CL_VARIABLES .= " $_";
+        }
+        $dvars{"CL_VARIABLES"} = 1;
     } else {  # unknown option. Stop execution
         print "Unknown option: $aname. Quiting\n";
         exit;
@@ -714,6 +717,7 @@ while(<P>){
         $val =~ s/SDD/$sday/g;
         $val =~ s/MMM/$imonth/g;
         $val =~ s/DDD/$iday/g;
+#        $val =~ s/RUNID/$RUNID/g;
         $val =~ s/DAYOFYEAR/$DAYOFYEAR/g;
     }
     foreach $ciave (keys %usedKeys){
@@ -763,8 +767,10 @@ if($clrunid ne ""){
 #print "RUNID = $clrunid\n";
     $RUNID = $clrunid;
 } else {
-    $RUNID = "r0";
+    $RUNID = "x0";
 }
+
+print "Emma, RUNID = $RUNID\n";
 
 $times = time;
 $times = "";
@@ -1107,7 +1113,7 @@ while(<P>){
     $ts = &timestamp();
 #    print LOG "$ts $tt $tid $tkind $tcriterion $xph\n";
     if($versyntax == 0){
-        print LOG "  $tid $tkind $tcriterion $xph\n";
+        print LOG "ORIG:  $tid $tkind $tcriterion $xph\n";
     }
     $tt++;
 }
@@ -1315,6 +1321,7 @@ for( $tt = 0; $tt < $nTasks; $tt++){
     # used to replace known  values once arguments have been recovered
     $originalSteps = $tSteps;
     for $Lehrheft (keys %dvars){
+#        print "Emma: replacing $Lehrheft with $$Lehrheft\n";
         if($Lehrheft eq "CL_VARIABLES") { next; }
         $tSteps =~ s/$Lehrheft/$$Lehrheft/g;
         $tStepsShrt =~ s/$Lehrheft/$$Lehrheft/g;
@@ -1352,7 +1359,7 @@ for( $tt = 0; $tt < $nTasks; $tt++){
             system("mkdir -p -m 775 $scratch");
         }
         if(!-e $queuePaths){ system("mkdir -p -m 775 $queuePaths"); } 
-        $queueFile = "${queuePaths}/q_${TAG}_${dateTag}${stepo}_$loopycounter.qsub";
+        $queueFile = "${queuePaths}/q_${TAG}_${dateTag}${stepo}_$loopycounter$RUNID.qsub";
         open(B, ">$queueFile");
         $submitTime = time;
         $mode = uc($firstWord);
@@ -1390,10 +1397,11 @@ HEADER
                 print B "#$qtag -t [1-$DAYSINYEAR]\n";
             }
             $canExecute = 1;
+            print "Emma: $tStepsShrt $qrunid\n";
             if($mode eq "WAIT"){
-                print B "$tStepsShrt\ntouch $marker\n";
+                print B "$tStepsShrt $qrunid\ntouch $marker\n";
             } else {
-                print B "$tStepsShrt\n";
+                print B "$tStepsShrt $qrunid\n";
             }
             close(B);
             
@@ -1431,9 +1439,9 @@ HEADER
             }
             $canExecute = 1;
             if($mode eq "WAIT"){
-                print B "$tStepsShrt\ntouch $marker\n";
+                print B "$tStepsShrt $qrunid\ntouch $marker\n";
             } else {
-                print B "$tStepsShrt\n";
+                print B "$tStepsShrt $qrunid\n";
             }
             close(B);
             
@@ -1442,6 +1450,8 @@ HEADER
         } else {
             # do nothing, we can not launch if we don't know which parallel
             # system we are launching to.
+            # but we need to trace...
+            $submit = "$qsubmit  $queueFile";
         }
 
         if($canExecute == 1){
@@ -1497,6 +1507,8 @@ HEADER
 #                unlink($queueFile);
             }
         } else {
+            print LOG "Emma: $tStepsShrt $qrunid\n";
+            print LOG "FAIL: $submit\n";
             print LOG "$ts $tid can not submit parallel job for site $site\n";
         }
 
@@ -1993,6 +2005,17 @@ HEADER
         } else {
             print LOG "$ts $tid  \"$tSteps\"  in test mode\n";
             system ("$tSteps");
+        }
+
+    } elsif($kind eq "mkdir"){
+# taskd: MKDIR absolute-path   -creates absolute-path if it doesn't exist
+        if($versyntax == 1){ next; }
+        $newFullPath = $firstWord;
+        if(-e $newFullPath){
+            print LOG "$newFullPath in the system already\n";
+        } else {
+            print LOG "$newFullPath created\n";
+            system("mkdir -p -m 775 $newFullPath");
         }
 
     } elsif($kind eq "chdir"){
