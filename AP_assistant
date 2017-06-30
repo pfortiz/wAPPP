@@ -1349,6 +1349,82 @@ FILE_INPUT
             }
 
 
+        } elsif($lt eq "spwn"){
+            # similar to process but processes are spawned to the shell
+            # rather than to a parallel system. Nothing prevents a parallel
+            # system to use this procedure.
+            $type = "spwn";
+            $file = "$dire/parameters.rpl";
+            if(!-e $file){
+                open(F, ">$file");
+print "BasePath = $basePath\n";
+                print F <<"FILE_INPUT";
+HISTORY_DIR = $historyPath
+DAILY_PATH = HISTORY_DIR/YYY/SMM/SDD
+FILE_INPUT
+                close(F);
+            }
+            $file = "$dire/local.rpl";
+            if(!-e $file){
+                open(F, ">$file");
+                print F <<"FILE_INPUT";
+echo about to submit the processing pipeline to the grid
+qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
+FILE_INPUT
+                close(F);
+            }
+            $file = "$dire/parallel.rpl";
+            if(!-e $file){
+                open(F, ">$file");
+                print F <<"FILE_INPUT";
+echo  Preparing for task TASK_ID
+# The following line is an example only, but you may need to change
+# non-standard fields in the control file
+#exec FLEX_MAKE_CONTROL TEMPLATE_CONTROL selected_year=YYY selected_month=SMM selected_day=SDD > CONTROL_FILE
+exec MAKE_CONTROL TEMPLATE_CONTROL YYY-SMM-SDD > CONTROL_FILE
+sexec PROCESSOR < CONTROL_FILE > LOG_FILE
+assignto hasDone command EXAMINE_DONE LOG_FILE -z
+if hasDone gt 0 then
+    sexec touch DONE_TRACER
+    sexec rm CONTROL_FILE
+    # uncomment next line to compress the log-file
+    # sexec gzip LOG_FILE
+    # if you never need them, get rid of the log-file
+    # sexec rm LOG_FILE
+    # sexec touch DONE_TRACER
+else
+    sexec touch FAIL_TRACER
+endif
+
+FILE_INPUT
+                close(F);
+            }
+            # we need now to create the processor file
+#            $file = "$dire/PROCESSOR";
+#            if(!-e $file){
+#                open(F, ">$file");
+#                $udvalue = $$defs{"processor"};
+#                $proc = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/BIN/$udvalue";
+#                print F "$proc\n";
+#                close(F);
+#            }
+            $udvalue = $$defs{"template_control_file"};
+            if(!-e $udvalue){
+                die "$udvalue does not exist. Fix before going ahead\n";
+            }
+            system("cp $udvalue $dire");
+            $file = "$dire/PROCESSOR";
+            if(!-e $file){
+                open(F, ">$file");
+                $udvalue = $$defs{"processor"};
+                if($udvalue =~ /^\//){
+                    $proc = "$udvalue";
+                } else {
+                    $proc = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/BIN/$udvalue";
+                }
+                print F "$proc\n";
+                close(F);
+            }
 
 
         } elsif($lt eq "dqc"){
