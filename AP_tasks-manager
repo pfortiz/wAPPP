@@ -92,7 +92,32 @@
 # upon them, if it finds and incomplete task whose daemon has died (if run
 # in the same machine)
 
+# July 7, 2017
+#
+# It is perfectly possible in a non GT scenario to have to launch a task
+# manager several times during a day. This implies that the tracers must
+# include some kind of unique identifier. This could be the number of
+# seconds (or milliseconds) in the particular day and/or the process ID
+# tracer names will be longer, but this is the price to pay to have truly
+# unique tracers.
+
+# The other important subject to deal with is that since the introduction
+# of "extra dimensions", task dependencies need alteration.
+#
+# The situation can be described this way:
+# - When a task has extra dimensions it is not one task anymore, it expands
+#   as many dimensions as necessary
+# - This also means that any task which depends on the task with
+#   extra-dimensions  need to have its list of dependencies expanded on
+#   the fly to account for all the extra tasks.
+# - As far as I can tell, this feature was never implemented, but it is
+#   time to do it
+
+
+
+
 use Time::Local;
+use Date::Parse;
 
 # no strict, I need black magic
 # use strict;
@@ -194,10 +219,11 @@ foreach $_ (@argos){
     $i++;
 }
 
-#$processingFile = shift(@ARGV);
+#$tmFile = shift(@ARGV);
 #$datesToProcess  = shift(@ARGV);
 #$extraDim = shift(@ARGV);
-$processingFile = shift(@argos);
+
+$tmFile = shift(@argos);
 $datesToProcess  = shift(@argos);
 $extraDim = shift(@argos);
 
@@ -222,9 +248,9 @@ if($extraDim ne ""){
     $addXdim = 0;
 }
 
-@pparts = split(/\//, $processingFile);
+@pparts = split(/\//, $tmFile);
 $pipeName = pop(@pparts);
-$basePath = $processingFile;
+$basePath = $tmFile;
 $basePath =~ s/$pipeName//;
 if($basePath eq ""){
     $basePath = $cwd;
@@ -236,9 +262,9 @@ if($otherargs eq "-init"){
     $init = 1;
 }
 
-if(!-e $processingFile){
+if(!-e $tmFile){
     print "$basePath $pipeName\n";
-    die "$processingFile does not exist. Dying...\n";
+    die "$tmFile does not exist. Dying...\n";
 }
 
 #print "DTP: $datesToProcess\n";
@@ -325,6 +351,15 @@ $initialTime = time;
 my ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) =
                                                     localtime($initialTime);
 
+$midnight = sprintf("%02d/%02d/%04d 00:00:00", $D_mday, $D_mon+1, $D_year+1900);
+
+$utc0000 =  str2time($midnight);
+$nsec = int($time - $utc0000);
+
+# I don't think this unique tracer needs to be generated again.
+$uniqueTracer = "${nsec}_$$";
+
+
 # we should trace that we are starting the processing of this task
 $host = `hostname`;
 chop ($host);
@@ -347,12 +382,68 @@ if($pipelinesDir eq ""){
 print "pipelinesDir: $pipelinesDir\n";
 print "uber-path:    $basePath\n";
 
-open(P,"<$processingFile");
+open(P,"<$tmFile");
 while(<P>){
     chop;
     if(/^\s*#/ or $_ eq ""){ # nothing of true interest
        next;
     }
+    if(/=/){ # we found a definition worth putting in the dictionary
+        push @tmLines, $_;
+    } elsif(/:/){
+        $oLine = $_;
+        @parts = split;
+        @oparts = @parts;
+        $task = shift(@parts);
+        $task =~ s/://;
+        $x = shift(@parts);
+        $x = shift(@parts);
+        $x = shift(@parts);
+        $x = shift(@parts);
+        $exDim = shift(@parts);
+        if($exDim eq "none"){
+            push @tmLines, $_;
+            $ttx{$task} = $task;
+        } else {
+#            print "TWX: $task $exDim\n";
+            open(XD, "<$exDim");
+            undef @expand;
+            while(<XD>){
+                chop;
+                if(/^#/ or $_ eq ""){ next; }
+                $oparts[0] = "${task}_$_:";
+                push @expand, "${task}_$_";
+                $oparts[5] = "none";
+                push @tmLines, "@oparts";
+#                print STDERR "Loading xd: $_\n";
+            }
+            close(XD);
+            $ttx{$task} = "@expand";
+#            print "To expand: $task, $ttx{$task}\n";
+        }
+
+        # see if any of the dependencies has to be expanded...
+
+    }
+}
+close(P);
+#foreach $_ (@tmLines){
+$nLines = $#tmLines + 1;
+for($l = 0; $l < $nLines; $l++){
+    $_ = $tmLines[$l];
+    @parts = split;
+#    print "task: $_\n";
+    $nParts = $#parts + 1;
+    for($i = 7; $i < $nParts; $i++){
+        $pp = $parts[$i];
+#        print "PP = $pp $ttx{$pp}\n";
+        $parts[$i] = $ttx{ $pp };
+    }
+    $tmLines[$l] = "@parts";
+}
+foreach $_ (@tmLines){
+#    print "New tmLine: $_\n";
+#while(<P>){
     if(/=/){ # we found a definition worth putting in the dictionary
         ($key, $value) = split(/=/,$_,2);
         $key =~ s/^\s*//;
@@ -407,6 +498,7 @@ while(<P>){
         }
         $exDim = shift(@parts);
         $laxDim = "xd$task";
+        undef @XDtasks;
         # this is the case in which extra dimensions affect one task only
         if($exDim ne "none"){
             if(!-e $exDim){
@@ -417,6 +509,7 @@ while(<P>){
                     chop;
                     if(/^#/ or $_ eq ""){ next; }
                     push @$laxDim, $_;
+                    push @XDtasks, "${task}_$_";
 #                    print STDERR "Loading xd: $_\n";
                 }
                 close(XD);
@@ -424,10 +517,12 @@ while(<P>){
             @prt = split(/\//, $exDim);
             $xname = pop (@prt);
             $extraVar{$task} = uc($xname);
+            $iGotXV{$task} = join("|", @$laxDim);
             print "Extra dimensions for $task: $extraVar{$task} @$laxDim\n";
         } else {
             push @$laxDim,"";
             $extraVar{$task} = "none";
+            push @XDtasks, $task;
         }
 #        next;
         $piper = shift(@parts);
@@ -445,17 +540,17 @@ while(<P>){
             $dependencies{$task} = "@parts";
             foreach $td (@parts){
                 $tasksDependingOnMe{$td} .= "$task ";
-#                $tdom = "tdom_$td";
-#                %${tdom}{$t} = 1;
             }
             push @dependentTasks, $task;
         }
         push @tasks, $task;
     }
 }
-close(P);
 
 #exit;
+
+#print "Tasks to deal with:\n";
+#foreach $t (@tasks){ print "\t$t\n"; }
 
 foreach $tsk (keys %dependencies){
     undef @iDependOn;
@@ -465,14 +560,17 @@ foreach $tsk (keys %dependencies){
     }
 }
 
-#foreach $_ (keys %dependOnMe){
-#    chop($dependOnMe{$_});
-#    $depstring = $dependOnMe{$_};
-#    print "On $_ : |$depstring|\n";
-#}
-#
-#
-#exit;
+foreach $_ (keys %dependOnMe){
+    chop($dependOnMe{$_});
+    $depstring = $dependOnMe{$_};
+    print "On $_ : |$depstring|\n";
+}
+
+# After this point, we should not need to deal with extra loops inside the
+# tasks, we already dealt with this issue by expanding xdim and modifying
+# their dependencies
+
+exit;
 
 $maxFails = $defs{"maxFails"};
 if($maxFails eq ""){
