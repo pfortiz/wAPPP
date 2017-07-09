@@ -16,6 +16,7 @@ $pdtx{"dqc"} = "a task dealing with data validation";
 $pdtx{"dxst"} = "a task to verify if data exists";
 $pdtx{"ulftp"} = "a task dealing with ftp uploads to a remote site";
 $pdtx{"rsync"} = "a task to transfer data (upload/download) using rsync";
+$pdtx{"spwn"} = "a task to be spawned by the shell..";
 $pdtx{"ud"} = "a task not defined above. To be defined from scratch.";
 
 $pdtf{"dlftp"} = 1;
@@ -24,6 +25,7 @@ $pdtf{"dqc"} = 4;
 $pdtf{"dxst"} = 8;
 $pdtf{"ulftp"} = 16;
 $pdtf{"rsync"} = 32;
+$pdtf{"spwn"} = 64;
 $pdtf{"ud"} = 255;
 
 

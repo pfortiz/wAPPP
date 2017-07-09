@@ -22,192 +22,216 @@
 #           structure if this is not present, something similar to what the
 #           task-manager does in -init mode.
 
+#  July 9, 2017. PFO using routines dealing with system dependencies from
+#  the ap_system_dependencies module.
+
 use Time::Local;
 
 my @parts = split(/\//, $0);
 my $me = pop(@parts);
 
-
 my $packagePath;
-my %apDict;
 
 BEGIN{
-    sub getFromRc(){
-        my $file = @_[0];
-        my %rcDict;
-        open(F, "<$file");
-        while(<F>){
-            if(/^#/ or /^$/){ next; }
-            chop;
-            ($key, $value) = split(/=/,$_,2);
-            $rcDict{$key} = "$value";
-        }
-        close(F);
-        return %rcDict;
-    }
-    
-    
-    sub createRc(){
-        my $lar = @_[0];
-        my $host = `hostname`;
-        chop ($host);
-        my $home = $ENV{HOME};
-        my @parts = split(/\//, $0);
-        pop @parts;
-        my $myPath = join("/", @parts);
-
-    
-        if(($host =~/alice/) or ($host=~/spectre/)){
-            $site = "UOL";
-            $history = "GT_HISTORY";
-            $basePath = "/data/atsr";
-            $exec_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/BIN";
-            $tctl_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/CTL_FILES_TEMPLATES";
-            $bundlePath = "$basePath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
-            $qtag = "PBS";
-            $pythonx = "python";
-            $qsubmit = "qsub -W x=resfailpolicy:requeue";
-            $qdelete = "qdel";
-            $qquery = "qstat";
-            $err_memory = "Cannot allocate memory";
-            $err_walltime = "job killed: walltime";
-        } elsif($host =~/rl.ac.uk/){
-            $site = "CEMS";
-            $history = "GT_HISTORY";
-            $basePath = "/group_workspaces/cems/leicester";
-            $bundlePath = "$basePath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
-            $exec_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/BIN";
-            $tctl_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/CTL_FILES_TEMPLATES";
-            $pythonx = "python2.7";
-            $qtag = "BSUB";
-            $qsubmit = "bsub -r <";
-            $qdelete = "bkill";
-            $qquery = "bjobs";
-            $err_memory = "job killed after reaching LSF memory usage limit.";
-            $err_walltime = "job killed after reaching LSF run time limit";
-        } elsif($host =~/acri.fr/){
-            $site = "CTCP";
-            $history = "GT_HISTORY";
-            $basePath = "/a/trouver";
-            $bundlePath = "$basePath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
-            $exec_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/BIN";
-            $tctl_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/CTL_FILES_TEMPLATES";
-            $pythonx = "python";
-            $qtag = "BSUB";
-            $qsubmit = "bsub ";
-            $qdelete = "bkill";
-            $qquery = "bjobs";
-            $err_memory = "Pas suffi memoir";
-            $err_walltime = "job killed after reaching LSF run time limit";
-        } elsif($host =~/iceberg/ or $host =~/sharc/) {
-            print "In Iceberg/sharc, University of Sheffield.\n";
-            # this should be a path to install as a local installation
-            $site = "UOS";
-            $history = "ICY_HISTORY";
-            $basePath = "$home";
-            $bundlePath = "$myPath";
-            $exec_path = "$basePath/bin";
-            $tctl_path = "$basePath/ctl_files";
-            $pythonx = "python";
-            $qtag = "\$";
-            $qsubmit = "qsub";
-            $qdelete = "qdel";
-            $qquery = "Qstat";
-            $err_memory = "Can not allocate memory";
-            $err_walltime = "job killed after reaching LSF run time limit";
-        } else {
-            print "In no-idea-where-I-am mode\n";
-            # this should be a path to install as a local installation
-            $site = "node";
-            $history = "THE_HISTORY";
-            $basePath = "$home";
-            $bundlePath = "$myPath";
-            $exec_path = "$basePath/bin";
-            $tctl_path = "$basePath/ctl_files";
-            $pythonx = "python";
-            $qtag = "disabled";
-            $qsubmit = "ksub";
-            $qdelete = "kdel";
-            $qquery = "kstat";
-            $err_memory = "Kein Memory";
-            $err_walltime = "job killed after reaching LSF run time limit";
-        }
-
-    
-        open(RC, ">$lar/.automatedProcessing");
-#        $bundlePath = "SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
-        print RC <<"RUNPIPELINERC";
-# .automatedProcessing
-# Mostly definitions which are site dependent
-
-# This one can be UOL, CEMS, UOS, or something else to come
-site=$site
-
-# The path to where SOFTWARE/SCRIPTS is located
-basePath=$basePath
-
-# The full path to where this "package" is located
-appath=$bundlePath
-
-# The full path to where executables are to be found
-exec_path=$exec_path
-
-# The full path to where template control files are to be found
-tctl_path=$tctl_path
-
-# The path to where runPipe area is located
-# You can change this path to suit your needs
-historyPath=$basePath/$history
-
-#---------------------------------------------------------------
-# These definitions deal with parallel processing site-depending
-# commands or error messages
-
-# Tag that goes in the submission scripts
-qtag=$qtag
-
-# The queue submit command
-qsubmit=$qsubmit
-
-# The command to delete jobs from the queue
-qdelete=$qdelete
-
-# The command to query the queue-manager about which jobs are running
-qquery=$qquery
-    
-wtError=$err_walltime
-memError=$err_memory
-python=$pythonx
-RUNPIPELINERC
-        close(RC);
-    }
-
-    my $home = $ENV{HOME};
-    my $rcfile = "$home/.automatedProcessing";
     my @parts = split(/\//, $0);
     pop @parts;
     my $myPath = join("/", @parts);
-    if(!-e $rcfile){
-        print "$0 packagePath $myPath\n";
-        print "Creating $rcfile \n";
-        my $rp = `which AP_runPipeline`;
-        chop $rp;
-        &createRc($home);
-        print "Please examine $rcfile to make sure no inconsistencies are found\n";
-	exit;
-    }
-    %apDict = &getFromRc($rcfile);
-    $packagePath = $apDict{"appath"};
-    $thissite = $apDict{"site"};
-    $historyPath = $apDict{"historyPath"};
-    $basePath = $apDict{"basePath"};
-print "BasePath = $basePath\n";
-print "history = $history\n";
-print "historyPath = $historyPath\n";
-#    print "basePath: $basePath\n";
+    $packagePath = $myPath;
 }
 
+print "path: $packagePath\n";
 use lib "$packagePath";
+
+use ap_system_dependencies;
+
+my %apDict = &getFromRc();
+
+foreach $_ (sort keys %apDict){
+    $$_ = $apDict{$_};
+}
+
+
+#my $packagePath;
+#my %apDict;
+#
+#BEGIN{
+#    sub getFromRc(){
+#        my $file = @_[0];
+#        my %rcDict;
+#        open(F, "<$file");
+#        while(<F>){
+#            if(/^#/ or /^$/){ next; }
+#            chop;
+#            ($key, $value) = split(/=/,$_,2);
+#            $rcDict{$key} = "$value";
+#        }
+#        close(F);
+#        return %rcDict;
+#    }
+#    
+#    
+#    sub createRc(){
+#        my $lar = @_[0];
+#        my $host = `hostname`;
+#        chop ($host);
+#        my $home = $ENV{HOME};
+#        my @parts = split(/\//, $0);
+#        pop @parts;
+#        my $myPath = join("/", @parts);
+#
+#    
+#        if(($host =~/alice/) or ($host=~/spectre/)){
+#            $site = "UOL";
+#            $history = "GT_HISTORY";
+#            $basePath = "/data/atsr";
+#            $exec_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/BIN";
+#            $tctl_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/CTL_FILES_TEMPLATES";
+#            $bundlePath = "$basePath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
+#            $qtag = "PBS";
+#            $pythonx = "python";
+#            $qsubmit = "qsub -W x=resfailpolicy:requeue";
+#            $qdelete = "qdel";
+#            $qquery = "qstat";
+#            $err_memory = "Cannot allocate memory";
+#            $err_walltime = "job killed: walltime";
+#        } elsif($host =~/rl.ac.uk/){
+#            $site = "CEMS";
+#            $history = "GT_HISTORY";
+#            $basePath = "/group_workspaces/cems/leicester";
+#            $bundlePath = "$basePath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
+#            $exec_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/BIN";
+#            $tctl_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/CTL_FILES_TEMPLATES";
+#            $pythonx = "python2.7";
+#            $qtag = "BSUB";
+#            $qsubmit = "bsub -r <";
+#            $qdelete = "bkill";
+#            $qquery = "bjobs";
+#            $err_memory = "job killed after reaching LSF memory usage limit.";
+#            $err_walltime = "job killed after reaching LSF run time limit";
+#        } elsif($host =~/acri.fr/){
+#            $site = "CTCP";
+#            $history = "GT_HISTORY";
+#            $basePath = "/a/trouver";
+#            $bundlePath = "$basePath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
+#            $exec_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/BIN";
+#            $tctl_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/CTL_FILES_TEMPLATES";
+#            $pythonx = "python";
+#            $qtag = "BSUB";
+#            $qsubmit = "bsub ";
+#            $qdelete = "bkill";
+#            $qquery = "bjobs";
+#            $err_memory = "Pas suffi memoir";
+#            $err_walltime = "job killed after reaching LSF run time limit";
+#        } elsif($host =~/iceberg/ or $host =~/sharc/) {
+#            print "In Iceberg/sharc, University of Sheffield.\n";
+#            # this should be a path to install as a local installation
+#            $site = "UOS";
+#            $history = "ICY_HISTORY";
+#            $basePath = "$home";
+#            $bundlePath = "$myPath";
+#            $exec_path = "$basePath/bin";
+#            $tctl_path = "$basePath/ctl_files";
+#            $pythonx = "python";
+#            $qtag = "\$";
+#            $qsubmit = "qsub";
+#            $qdelete = "qdel";
+#            $qquery = "Qstat";
+#            $err_memory = "Can not allocate memory";
+#            $err_walltime = "job killed after reaching LSF run time limit";
+#        } else {
+#            print "In no-idea-where-I-am mode\n";
+#            # this should be a path to install as a local installation
+#            $site = "node";
+#            $history = "THE_HISTORY";
+#            $basePath = "$home";
+#            $bundlePath = "$myPath";
+#            $exec_path = "$basePath/bin";
+#            $tctl_path = "$basePath/ctl_files";
+#            $pythonx = "python";
+#            $qtag = "disabled";
+#            $qsubmit = "ksub";
+#            $qdelete = "kdel";
+#            $qquery = "kstat";
+#            $err_memory = "Kein Memory";
+#            $err_walltime = "job killed after reaching LSF run time limit";
+#        }
+#
+#    
+#        open(RC, ">$lar/.automatedProcessing");
+##        $bundlePath = "SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
+#        print RC <<"RUNPIPELINERC";
+## .automatedProcessing
+## Mostly definitions which are site dependent
+#
+## This one can be UOL, CEMS, UOS, or something else to come
+#site=$site
+#
+## The path to where SOFTWARE/SCRIPTS is located
+#basePath=$basePath
+#
+## The full path to where this "package" is located
+#appath=$bundlePath
+#
+## The full path to where executables are to be found
+#exec_path=$exec_path
+#
+## The full path to where template control files are to be found
+#tctl_path=$tctl_path
+#
+## The path to where runPipe area is located
+## You can change this path to suit your needs
+#historyPath=$basePath/$history
+#
+##---------------------------------------------------------------
+## These definitions deal with parallel processing site-depending
+## commands or error messages
+#
+## Tag that goes in the submission scripts
+#qtag=$qtag
+#
+## The queue submit command
+#qsubmit=$qsubmit
+#
+## The command to delete jobs from the queue
+#qdelete=$qdelete
+#
+## The command to query the queue-manager about which jobs are running
+#qquery=$qquery
+#    
+#wtError=$err_walltime
+#memError=$err_memory
+#python=$pythonx
+#RUNPIPELINERC
+#        close(RC);
+#    }
+#
+#    my $home = $ENV{HOME};
+#    my $rcfile = "$home/.automatedProcessing";
+#    my @parts = split(/\//, $0);
+#    pop @parts;
+#    my $myPath = join("/", @parts);
+#    if(!-e $rcfile){
+#        print "$0 packagePath $myPath\n";
+#        print "Creating $rcfile \n";
+#        my $rp = `which AP_runPipeline`;
+#        chop $rp;
+#        &createRc($home);
+#        print "Please examine $rcfile to make sure no inconsistencies are found\n";
+#	exit;
+#    }
+#    %apDict = &getFromRc($rcfile);
+#    $packagePath = $apDict{"appath"};
+#    $thissite = $apDict{"site"};
+#    $historyPath = $apDict{"historyPath"};
+#    $basePath = $apDict{"basePath"};
+#print "BasePath = $basePath\n";
+#print "history = $history\n";
+#print "historyPath = $historyPath\n";
+##    print "basePath: $basePath\n";
+#}
+#
+#use lib "$packagePath";
+
 #use lib "$basePath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
 #use ap_timex qw(&isLeap &daysInMonth &daysInYear &listOfDates &datesBetween &segmentedDates dateToDoy);
 use ap_timex;
@@ -261,7 +285,26 @@ if($#ARGV < 0){
         exit;
     } else {
         if($#tdfiles < 0){
-            print "No .td files found (other than sample.td which is ignored)\n";
+            print <<"MESSAGE";
+No .td files found (other than sample.td which is ignored)
+
+The simplest way to start is for you to write a bare bones file (bb file)
+
+A bare-bones file has a name like "processEW.bb". The '.bb' ending is
+mandatory.
+
+A bare-bones file contains lines of the form:
+
+taskID: <list-of-tasks-which-need-completion-before-this-one-is-run>
+
+eg:
+
+dlftp-getDataFromSiteX:
+dlftp-getDataFromSiteY:
+proc-processData: dlftp-getDataFromSiteX dlftp-getDataFromSiteY
+
+
+MESSAGE
         } else {
             &makeStubs();
         }
