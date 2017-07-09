@@ -237,14 +237,14 @@ if($extraDim ne ""){
         while(<X>){
             chop;
             if(/^#/ or /^$/){ next; }
-            push @xDim, $_;
+            push @gDim, "~$xdName=${_}";
         }
         $addXdim = 1;
     } else {
         die "File $xdName = $xdFile does not exist\n";
     }
 } else {
-    push @xDim, "";
+    push @gDim, "";
     $addXdim = 0;
 }
 
@@ -280,7 +280,7 @@ $date = $datesToProcess;
 
 $ts = &timestamp();
 open(H, ">>history");
-print H "$ts $me @argos\n";
+print H "$ts $me @ARGV\n";
 close(H);
 
 
@@ -383,67 +383,12 @@ print "pipelinesDir: $pipelinesDir\n";
 print "uber-path:    $basePath\n";
 
 open(P,"<$tmFile");
+undef @taskLines;
 while(<P>){
     chop;
     if(/^\s*#/ or $_ eq ""){ # nothing of true interest
        next;
     }
-    if(/=/){ # we found a definition worth putting in the dictionary
-        push @tmLines, $_;
-    } elsif(/:/){
-        $oLine = $_;
-        @parts = split;
-        @oparts = @parts;
-        $task = shift(@parts);
-        $task =~ s/://;
-        $x = shift(@parts);
-        $x = shift(@parts);
-        $x = shift(@parts);
-        $x = shift(@parts);
-        $exDim = shift(@parts);
-        if($exDim eq "none"){
-            push @tmLines, $_;
-            $ttx{$task} = $task;
-        } else {
-#            print "TWX: $task $exDim\n";
-            open(XD, "<$exDim");
-            undef @expand;
-            while(<XD>){
-                chop;
-                if(/^#/ or $_ eq ""){ next; }
-                $oparts[0] = "${task}_$_:";
-                push @expand, "${task}_$_";
-                $oparts[5] = "none";
-                push @tmLines, "@oparts";
-#                print STDERR "Loading xd: $_\n";
-            }
-            close(XD);
-            $ttx{$task} = "@expand";
-#            print "To expand: $task, $ttx{$task}\n";
-        }
-
-        # see if any of the dependencies has to be expanded...
-
-    }
-}
-close(P);
-#foreach $_ (@tmLines){
-$nLines = $#tmLines + 1;
-for($l = 0; $l < $nLines; $l++){
-    $_ = $tmLines[$l];
-    @parts = split;
-#    print "task: $_\n";
-    $nParts = $#parts + 1;
-    for($i = 7; $i < $nParts; $i++){
-        $pp = $parts[$i];
-#        print "PP = $pp $ttx{$pp}\n";
-        $parts[$i] = $ttx{ $pp };
-    }
-    $tmLines[$l] = "@parts";
-}
-foreach $_ (@tmLines){
-#    print "New tmLine: $_\n";
-#while(<P>){
     if(/=/){ # we found a definition worth putting in the dictionary
         ($key, $value) = split(/=/,$_,2);
         $key =~ s/^\s*//;
@@ -451,7 +396,142 @@ foreach $_ (@tmLines){
         $value =~ s/^\s*//;
         $value =~ s/\s*$//;
         $defs{$key} = $value;
-    } elsif(/:/) { #task found
+    } elsif(/:/){
+#        print "Line: $_\n";
+        @parts = split;
+        $nParts = $#parts + 1;
+        @nparts = @parts;
+        $tname = $parts[0];
+        $xdfile = $parts[5];
+        $tname =~ s/://;
+        foreach $gd (@gDim){
+            $nparts[0] = "$tname$gd:";
+            if($xdfile ne "none"){
+                $hasXdim{"$tname$gd"} = "$xdfile";
+            }
+            for($i = 7; $i < $nParts ; $i++){
+                $dname = $parts[$i];
+                $nparts[$i] = "$dname$gd";
+            }
+            push @taskLines, "@nparts";
+        }
+    }
+}
+close(P);
+
+#foreach $xl (@taskLines){ print "XL: $xl\n"; }
+#foreach $twd (keys %hasXdim){ print "$twd needs to open $hasXdim{$twd}\n"; }
+
+#exit;
+
+foreach $_ (@taskLines){
+#while(<P>){
+#    chop;
+#    if(/^\s*#/ or $_ eq ""){ # nothing of true interest
+#       next;
+#    }
+#    if(/=/){ # we found a definition worth putting in the dictionary
+#        ($key, $value) = split(/=/,$_,2);
+#        $key =~ s/^\s*//;
+#        $key =~ s/\s*$//;
+#        $value =~ s/^\s*//;
+#        $value =~ s/\s*$//;
+#        $defs{$key} = $value;
+#        # this line doesn't make it to the new tmLines
+##        push @tmLines, $_;
+#    } elsif(/:/){
+    $oLine = $_;
+    @parts = split;
+    @oparts = @parts;
+    $task = shift(@parts);
+    $task =~ s/://;
+    $x = shift(@parts);
+    $x = shift(@parts);
+    $x = shift(@parts);
+    $x = shift(@parts);
+    $exDim = shift(@parts);
+    if($exDim eq "none"){
+        push @tmLines, $_;
+        $ttx{$task} = $task;
+    } else {
+#            print "TWX: $task $exDim\n";
+        if(!-e $exDim){
+            die "File $exDim (associated to $task) must exist before I can run properly. Please create\n";
+        } else {
+            open(XD, "<$exDim");
+            $XDIM = uc($exDim);
+            undef @expand;
+            while(<XD>){
+                chop;
+                if(/^#/ or $_ eq ""){ next; }
+                $oparts[0] = "${task}~$XDIM=$_:";
+                push @expand, "${task}~$XDIM=$_";
+                $oparts[5] = "none";
+                push @tmLines, "@oparts";
+#                print STDERR "Loading xd: $_\n";
+            }
+            close(XD);
+        }
+        $ttx{$task} = "@expand";
+#        print "To expand: $task => $ttx{$task}\n";
+    }
+
+    # see if any of the dependencies has to be expanded...
+
+#    }
+}
+#close(P);
+#foreach $_ (@tmLines){
+
+$nLines = $#tmLines + 1;
+for($l = 0; $l < $nLines; $l++){
+    $_ = $tmLines[$l];
+    @parts = split;
+#    print "task: $_\n";
+    $tsk = $parts[0];
+    $tsk =~ s/://;
+    @xp = split("~",$tsk);
+    $toMatch = pop (@xp);
+    $xdp = join("~", @xp);
+    $xdm = $hasXdim{$xdp};
+#    print "CL: $tsk $_ | $xdp | $xdm | $toMatch\n";
+    $nParts = $#parts + 1;
+    for($i = 7; $i < $nParts; $i++){
+        $pp = $parts[$i];
+        $itsXdm =  $hasXdim{$pp};
+        if($itsXdm eq $xdm){
+            $_ = $ttx{$pp};
+            @seldep = split;
+#            print "SELDEP: @seldep\n";
+            undef @things;
+            foreach $_ (@seldep){
+#                print "SCK: $_ | $toMatch\n";
+                if(/$toMatch/){
+                    push @things, $_;
+                }
+            }
+#            print "PPEQ = $pp |= $toMatch =| $itsXdm | $ttx{$pp} |=| @things\n";
+            $parts[$i] = "@things";
+        } else {
+#            print "PP = $pp | $itsXdm | $ttx{$pp}\n";
+            $parts[$i] = $ttx{ $pp };
+        }
+    }
+    $tmLines[$l] = "@parts";
+}
+
+foreach $_ (@tmLines){
+    print "New tmLine: $_\n";
+
+#while(<P>){
+#    if(/=/){ # we found a definition worth putting in the dictionary
+#        ($key, $value) = split(/=/,$_,2);
+#        $key =~ s/^\s*//;
+#        $key =~ s/\s*$//;
+#        $value =~ s/^\s*//;
+#        $value =~ s/\s*$//;
+#        $defs{$key} = $value;
+    if(/:/) { #task found
         @parts = split;
         $task = shift(@parts);
         $task =~ s/:$//;
@@ -501,6 +581,8 @@ foreach $_ (@tmLines){
         undef @XDtasks;
         # this is the case in which extra dimensions affect one task only
         if($exDim ne "none"){
+            # this piece of code should never be passed through as any
+            # tasks containing extra dimensions was modified above
             if(!-e $exDim){
                 die "File $exDim must exist before I can run properly. Please create\n";
             } else {
@@ -518,7 +600,7 @@ foreach $_ (@tmLines){
             $xname = pop (@prt);
             $extraVar{$task} = uc($xname);
             $iGotXV{$task} = join("|", @$laxDim);
-            print "Extra dimensions for $task: $extraVar{$task} @$laxDim\n";
+#            print "Extra dimensions for $task: $extraVar{$task} @$laxDim\n";
         } else {
             push @$laxDim,"";
             $extraVar{$task} = "none";
@@ -782,6 +864,14 @@ while(){
             foreach $t (@tasks){
                 $laxDim = "xd$t";
                 print STDERR "Task: $t @$laxDim\n";
+
+                # this part needs modification, as tasks which had extra
+                # dimensions were expanded and a set of new tasks was
+                # created on the fly, where the value of
+                # the extra dimension is located after a (~) in the task
+                # name Actually, we need it to be XdimName~xdimValue
+                # HERE-hear
+
                 foreach $txd (@$laxDim){
 #                    print STDERR "TXD $txd\n";
                     $spDims = "$xd$txd";
