@@ -716,6 +716,10 @@ chdir($dotOdotE);
 
 $ntimes = 0;
 
+# declaration of dictionaries used later as arguments.
+$queueJob{-32768} = -1;
+$qjn{-32768} = -1;
+
 # this is the infinite loop, broken only when no tasks are left to execute
 while(){
     # let's pick up the jobIds of all running jobs
@@ -723,89 +727,96 @@ while(){
     # than having them spread over several scripts.
     # aim:
     # %runningJobs = &getRunningJobs();
-
-    undef %runningJobs;
     if($dummyRun == 0){
-        open(Q, "$qquery | ");
-        $nJobsRunning = 0;
-        undef @errorFiles;
-        undef %errorsById;
-        undef %logsById;
-        if($site eq "UOL"){
-            $_ = <Q>;       # dummy line
-            $_ = <Q>;       # dummy line
-            while(<Q>){
-                chop;
-                @jobs = split();
-                $jid = shift(@jobs);
-                $status = $jobs[3];
-    #            if($status ne "C"){
-    #            }
-                $runningJobs{$jid} = 1;
-                $nJobsRunning++;
-                print "QRJ: $jid\n";
-            } 
-            # how do I distinguish an error in the queue system from a real
-            # situation when no jobs are running??
-            # we are at $dotOdotE   Which files are there?
-            open(E, "ls  | ");
-            while(<E>){
-                chop;
-                if(/\.e/){
-                    push @errorFiles, $_;
-                    @lepath = split(/\.e/);
-                    $eid = $lepath[1];
-                    $errorsById{$eid} = $_;
-    
-    #                print "Error file: $_\n";
-                } elsif (/\.o/){
-                    @lepath = split(/\.o/);
-                    $oid = $lepath[1];
-                    $logsById{$oid} = $_;
-                }
-            }
-            close(E);
-            
-        } elsif($site eq "CEMS"){
-            # this needs fixing...
-            $_ = <Q>;       # dummy line
-            $_ = <Q>;       # dummy line
-            while(<Q>){
-                chop;
-                @jobs = split();
-                $jid = shift(@jobs);
-                $status = $jobs[3];
-    #            if($status ne "C"){
-    #            }
-                $runningJobs{$jid} = 1;
-                $nJobsRunning++;
-                print "QRJ: $jid\n";
-            } 
-            # how do I distinguish an error in the queue system from a real
-            # situation when no jobs are running??
-            # we are at $dotOdotE   Which files are there?
-            open(E, "ls  | ");
-            while(<E>){
-                chop;
-                if(/\.e/){
-                    push @errorFiles, $_;
-                    @lepath = split(/\.err/);
-                    $eid = $lepath[0];
-                    $errorsById{$eid} = $_;
-    
-    #                print "Error file: $_\n";
-                } elsif (/\.l/){
-                    @lepath = split(/\.log/);
-                    $oid = $lepath[0];
-                    $logsById{$oid} = $_;
-                }
-            }
-            close(E);
-            
-        } elsif($site eq "CTCP"){
-        }
-        close(Q);
+        @pointers = &getRunningJobs(%apDict);
+
+        %runningJobs = %{$pointers[0]};
+        %errorFiles = @{$pointers[1]};
+        %errorsById = %{$pointers[2]};
+        %logsById = %{$pointers[3]};
     }
+
+#    if($dummyRun == 0){
+#        open(Q, "$qquery | ");
+#        $nJobsRunning = 0;
+#        undef @errorFiles;
+#        undef %errorsById;
+#        undef %logsById;
+#        if($site eq "UOL"){
+#            $_ = <Q>;       # dummy line
+#            $_ = <Q>;       # dummy line
+#            while(<Q>){
+#                chop;
+#                @jobs = split();
+#                $jid = shift(@jobs);
+#                $status = $jobs[3];
+#    #            if($status ne "C"){
+#    #            }
+#                $runningJobs{$jid} = 1;
+#                $nJobsRunning++;
+#                print "QRJ: $jid\n";
+#            } 
+#            # how do I distinguish an error in the queue system from a real
+#            # situation when no jobs are running??
+#            # we are at $dotOdotE   Which files are there?
+#            open(E, "ls  | ");
+#            while(<E>){
+#                chop;
+#                if(/\.e/){
+#                    push @errorFiles, $_;
+#                    @lepath = split(/\.e/);
+#                    $eid = $lepath[1];
+#                    $errorsById{$eid} = $_;
+#    
+#    #                print "Error file: $_\n";
+#                } elsif (/\.o/){
+#                    @lepath = split(/\.o/);
+#                    $oid = $lepath[1];
+#                    $logsById{$oid} = $_;
+#                }
+#            }
+#            close(E);
+#            
+#        } elsif($site eq "CEMS"){
+#            # this needs fixing...
+#            $_ = <Q>;       # dummy line
+#            $_ = <Q>;       # dummy line
+#            while(<Q>){
+#                chop;
+#                @jobs = split();
+#                $jid = shift(@jobs);
+#                $status = $jobs[3];
+#    #            if($status ne "C"){
+#    #            }
+#                $runningJobs{$jid} = 1;
+#                $nJobsRunning++;
+#                print "QRJ: $jid\n";
+#            } 
+#            # how do I distinguish an error in the queue system from a real
+#            # situation when no jobs are running??
+#            # we are at $dotOdotE   Which files are there?
+#            open(E, "ls  | ");
+#            while(<E>){
+#                chop;
+#                if(/\.e/){
+#                    push @errorFiles, $_;
+#                    @lepath = split(/\.err/);
+#                    $eid = $lepath[0];
+#                    $errorsById{$eid} = $_;
+#    
+#    #                print "Error file: $_\n";
+#                } elsif (/\.l/){
+#                    @lepath = split(/\.log/);
+#                    $oid = $lepath[0];
+#                    $logsById{$oid} = $_;
+#                }
+#            }
+#            close(E);
+#            
+#        } elsif($site eq "CTCP"){
+#        }
+#        close(Q);
+#    }
 
 
     $currentTime = time;
@@ -1210,34 +1221,40 @@ while(){
     # Split processingOutput with \n, then examine each component
     # for the pattern JOB=. Extract from that line just the numeric
     # part. Assign the jobsIds to a string of jobIDs.
-                        if($site eq "UOL"){
-                            @jobids = split(/\n/, $processingOutput);
-                            $jobsline = "";
-                            foreach $_ (@jobids){
-                                if(/JOB=/){
-                                    $_ =~ s/JOB=//g;
-                                # this is how it works in ALICE
-                                    $jobsline = $_;
-                                }
-                            }
+                        @ptrs = &getProcessDict($processingOutput, $site, $dask, \%qjn, \%queueJob);
+                        %qjn = %{$ptrs[0]};
+                        %queueJob = %{$ptrs[1]};
 
-                            @jparts = split(/\./,$jobsline);
-                            if($jobsline eq ""){
-                                $notInParallel{$dask} = 1;
-                            } else {
-                                $queueJob{$dask} = $jobsline;
-                                $qjn{$dask} = $jparts[0];
-                                print "Jobs for $dask: $jobsline $jparts[0]\n";
-                            }
-                        } elsif($site eq "CEMS"){
-                            $_ = $processingOutput;
-                            @jobids = split(/[<>]/);
-                            $jid = $jobids[1];
 
-                            $qjn{$dask} = $jid;
-                            $queueJob{$dask} = $jid;
-                            print "JOBID\@CEMS = $jid\n";
-                        }
+#                        if($site eq "UOL"){
+#                            @jobids = split(/\n/, $processingOutput);
+#                            $jobsline = "";
+#                            foreach $_ (@jobids){
+#                                if(/JOB=/){
+#                                    $_ =~ s/JOB=//g;
+#                                # this is how it works in ALICE
+#                                    $jobsline = $_;
+#                                }
+#                            }
+#
+#                            @jparts = split(/\./,$jobsline);
+#                            if($jobsline eq ""){
+#                                $notInParallel{$dask} = 1;
+#                            } else {
+#                                $queueJob{$dask} = $jobsline;
+#                                $qjn{$dask} = $jparts[0];
+#                                print "Jobs for $dask: $jobsline $jparts[0]\n";
+#                            }
+#                        } elsif($site eq "CEMS"){
+#                            $_ = $processingOutput;
+#                            @jobids = split(/[<>]/);
+#                            $jid = $jobids[1];
+#
+#                            $qjn{$dask} = $jid;
+#                            $queueJob{$dask} = $jid;
+#                            print "JOBID\@CEMS = $jid\n";
+#                        }
+
                     } else {
                         print "test-Launch $t\n$commando\n";
                     }

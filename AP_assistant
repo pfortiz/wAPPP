@@ -50,6 +50,10 @@ foreach $_ (sort keys %apDict){
     $$_ = $apDict{$_};
 }
 
+$navail = &getNavailableProcesses(%apDict);
+print "Number of available processes: $navail\n";
+
+%rj = &getRunningJobIds(0, %apDict);
 
 #my $packagePath;
 #my %apDict;

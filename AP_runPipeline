@@ -328,32 +328,48 @@ my $packagePath;
 my %apDict;
 
 BEGIN{
-    sub getFromRc(){
-        my $file = @_[0];
-        my %rcDict;
-        open(F, "<$file");
-        while(<F>){
-            if(/^#/ or /^$/){ next; }
-            chop;
-            ($key, $value) = split(/=/,$_,2);
-            $rcDict{$key} = "$value";
-        }
-        close(F);
-        return %rcDict;
-    }
-    my $home = $ENV{HOME};
-    my $rcfile = "$home/.automatedProcessing";
-    if(!-e $rcfile){
-        die "Please run AP_assistant to initialise the AUTOMATED_PROCESSING package\n\n";
-    }
-    %apDict = &getFromRc($rcfile);
-    $packagePath = $apDict{"appath"};
+    my @parts = split(/\//, $0);
+    pop @parts;
+    my $myPath = join("/", @parts);
+    $packagePath = $myPath;
 }
+
+#BEGIN{
+#    sub getFromRc(){
+#        my $file = @_[0];
+#        my %rcDict;
+#        open(F, "<$file");
+#        while(<F>){
+#            if(/^#/ or /^$/){ next; }
+#            chop;
+#            ($key, $value) = split(/=/,$_,2);
+#            $rcDict{$key} = "$value";
+#        }
+#        close(F);
+#        return %rcDict;
+#    }
+#    my $home = $ENV{HOME};
+#    my $rcfile = "$home/.automatedProcessing";
+#    if(!-e $rcfile){
+#        die "Please run AP_assistant to initialise the AUTOMATED_PROCESSING package\n\n";
+#    }
+#    %apDict = &getFromRc($rcfile);
+#    $packagePath = $apDict{"appath"};
+#}
 
 #use timex qw(&dateToDoy &isLeap &daysInMonth &daysInYear &listOfDates &datesBetween &segmentedDates);
 
 use lib "$packagePath";
 use ap_timex;
+use ap_system_dependencies;
+
+
+my %apDict = &getFromRc();
+
+foreach $_ (sort keys %apDict){
+    $$_ = $apDict{$_};
+#    print "$_ = $$_\n";
+}
 
 $waitTime = 60; # sleep time of 1 minute
 
@@ -805,33 +821,35 @@ $logFile = "$resultsPath/${procedureId}_$times.log";
 if($execute == $QDELETE){
     print "$earlyMessage\n";
     print "About to delete all jobs associated with this pipeline $site\n";
-    open (J, "<$logFile");
-    $njobs2kill = 0;
-    if($site eq "UOL"){
-        while(<J>){
-            if(/Submitted job/){
-                chop;
-                @jparts = split;
-                $job = pop(@jparts);
-                $job =~ s/\..*//;
-                print "$_\nJob to delete: $job\n";
-                $njobs2kill++;
-            }
-        }
-    } elsif($site eq "CEMS"){
-        while(<J>){
-            if(/Submitted job/){
-                chop;
-                @jparts = split;
-                $job = pop(@jparts);
-                $job =~ s/\..*//;
-                print "$_\nJob to delete: $job\n";
-                $njobs2kill++;
-            }
-        }
-    } else {
-    }
-    print "Number of jobs to kill: $njobs2kill\n";
+#    open (J, "<$logFile");
+#    $njobs2kill = 0;
+#    if($site eq "UOL"){
+#        while(<J>){
+#            if(/Submitted job/){
+#                chop;
+#                @jparts = split;
+#                $job = pop(@jparts);
+#                $job =~ s/\..*//;
+#                print "$_\nJob to delete: $job\n";
+#                $njobs2kill++;
+#            }
+#        }
+#    } elsif($site eq "CEMS"){
+#        while(<J>){
+#            if(/Submitted job/){
+#                chop;
+#                @jparts = split;
+#                $job = pop(@jparts);
+#                $job =~ s/\..*//;
+#                print "$_\nJob to delete: $job\n";
+#                $njobs2kill++;
+#            }
+#        }
+#    } else {
+#    }
+#    print "Number of jobs to kill: $njobs2kill\n";
+
+    # This is kind of pointless!!
     exit;
 } elsif($execute == $QCLEAN){ # clean .o .e tracers and pack qsubs
 #    $queuePaths = "$resultsPath/${procedureId}";
@@ -880,17 +898,20 @@ if($execute == $QDELETE){
     print "Pipelines wih errors: $nwith\n";
 #    for($i = 0 ; $i < 10; $i++){ print "With error: $withErrors[$i]\n"; }
 
-    if($site eq "CEMS"){
-        $walltime = &decHourToHHMM($clWalltime);
-        $wallPat = "walltime=";
-        $wallString = "#BS -l walltime=$walltime";
-        $submit = "bsub < ";
-    }   elsif($site eq "UOL"){
-        $walltime = &decHourToHHMMSS($clWalltime);
-        $wallPat = "walltime=";
-        $wallString = "#PBS -l walltime=$walltime";
-        $submit = "qsub ";
-    }
+    ($walltime, $wallPat, $wallString, $submit) =
+                    &getSiteParams($site, $clWalltime);
+
+#    if($site eq "CEMS"){
+#        $walltime = &decHourToHHMM($clWalltime);
+#        $wallPat = "walltime=";
+#        $wallString = "#BS -l walltime=$walltime";
+#        $submit = "bsub < ";
+#    }   elsif($site eq "UOL"){
+#        $walltime = &decHourToHHMMSS($clWalltime);
+#        $wallPat = "walltime=";
+#        $wallString = "#PBS -l walltime=$walltime";
+#        $submit = "qsub ";
+#    }
 
     # time to reopen the LOG file, in append mode in order to append
     # whatever we do in this phase.
@@ -1360,7 +1381,6 @@ for( $tt = 0; $tt < $nTasks; $tt++){
         }
         if(!-e $queuePaths){ system("mkdir -p -m 775 $queuePaths"); } 
         $queueFile = "${queuePaths}/q_${TAG}_${dateTag}${stepo}_$loopycounter$RUNID.qsub";
-        open(B, ">$queueFile");
         $submitTime = time;
         $mode = uc($firstWord);
 
@@ -1379,80 +1399,98 @@ for( $tt = 0; $tt < $nTasks; $tt++){
             print LOG "Using file-defined-walltime: $WALLTIME\n";
         }
 
-        if($site eq "UOL"){
-            $walltime = &decHourToHHMMSS($qwalltime);
-            print LOG "$ts $qsubmit $queueFile\n";
-            print B <<"HEADER";
-#!/bin/bash
-#
-#$qtag -N ${procedureId}_$loopycounter
-#$qtag -l walltime=$walltime
-#$qtag -l pvmem=${memory}mb
-#$qtag -l procs=1
-HEADER
-            if($mode eq "monthly"){
-                print B "#$qtag -t [1-$DAYSINMONTH]\n";
-            }
-            if($mode eq "yearly"){
-                print B "#$qtag -t [1-$DAYSINYEAR]\n";
-            }
-            $canExecute = 1;
-            print "Emma: $tStepsShrt $qrunid\n";
-            if($mode eq "WAIT"){
-                print B "$tStepsShrt $qrunid\ntouch $marker\n";
-            } else {
-                print B "$tStepsShrt $qrunid\n";
-            }
-            close(B);
-            
-            # Now, we need to wait for the marker to indicate completion
-            $submit = "qsub $queueFile";
-        } elsif($site eq "CEMS"){
-            if($walltime < 24){
-                $queueName = "short-serial";
-            } else {
-                $queueName = "long-serial";
-            }
-            $jobName =  "${procedureId}-${loopycounter}";
-            $walltime = &decHourToHHMM($qwalltime);
-            print LOG "$ts bsub $queueFile\n";
-# TODO properly. queue name depends on walltime now
-            $memoryInKbytes = $memory * 1000;
-            print B <<"HEADER";
-#!/bin/bash
-#
-#$qtag -q $queueName
-#$qtag -o %J.log
-#$qtag -e %J.err
-#$qtag -R "rusage[mem=$memory]"
-#$qtag -M $memoryInKbytes
-#$qtag -n 1
-#$qtag -W $walltime
-#$qtag -J ${jobName}
-HEADER
-
-            if($mode eq "monthly"){
-                print B "#$qtag -t [1-$DAYSINMONTH]\n";
-            }
-            if($mode eq "yearly"){
-                print B "#$qtag -t [1-$DAYSINYEAR]\n";
-            }
-            $canExecute = 1;
-            if($mode eq "WAIT"){
-                print B "$tStepsShrt $qrunid\ntouch $marker\n";
-            } else {
-                print B "$tStepsShrt $qrunid\n";
-            }
-            close(B);
-            
-            # Now, we need to wait for the marker to indicate completion
-            $submit = "$qsubmit  $queueFile";
+        print LOG "$ts $qsubmit $queueFile\n";
+        $jobName = "${procedureId}_$loopycounter";
+#        if($mode eq "monthly"){
+#            $coverage "#$qtag -t [1-$DAYSINMONTH]";
+#        }
+#        if($mode eq "yearly"){
+#            $coverage "#$qtag -t [1-$DAYSINYEAR]";
+#        }
+        if($mode eq "WAIT"){
+            $touchIt = "$tStepsShrt $qrunid\ntouch $marker";
         } else {
-            # do nothing, we can not launch if we don't know which parallel
-            # system we are launching to.
-            # but we need to trace...
-            $submit = "$qsubmit  $queueFile";
+            $touchIt = "$tStepsShrt $qrunid";
         }
+        $submit = &createQsubFile($site, $queueFile, $qwalltime, $memory,
+                    $jobName, $touchIt, $qtag, $qsubmit);
+
+#        open(B, ">$queueFile");
+#
+#        if($site eq "UOL"){
+#            $walltime = &decHourToHHMMSS($qwalltime);
+#            print LOG "$ts $qsubmit $queueFile\n";
+#            print B <<"HEADER";
+##!/bin/bash
+##
+##$qtag -N ${procedureId}_$loopycounter
+##$qtag -l walltime=$walltime
+##$qtag -l pvmem=${memory}mb
+##$qtag -l procs=1
+#HEADER
+#            if($mode eq "monthly"){
+#                print B "#$qtag -t [1-$DAYSINMONTH]\n";
+#            }
+#            if($mode eq "yearly"){
+#                print B "#$qtag -t [1-$DAYSINYEAR]\n";
+#            }
+#            $canExecute = 1;
+#            print "Emma: $tStepsShrt $qrunid\n";
+#            if($mode eq "WAIT"){
+#                print B "$tStepsShrt $qrunid\ntouch $marker\n";
+#            } else {
+#                print B "$tStepsShrt $qrunid\n";
+#            }
+#            close(B);
+#            
+#            # Now, we need to wait for the marker to indicate completion
+#            $submit = "qsub $queueFile";
+#        } elsif($site eq "CEMS"){
+#            if($walltime < 24){
+#                $queueName = "short-serial";
+#            } else {
+#                $queueName = "long-serial";
+#            }
+#            $jobName =  "${procedureId}-${loopycounter}";
+#            $walltime = &decHourToHHMM($qwalltime);
+#            print LOG "$ts bsub $queueFile\n";
+## TODO properly. queue name depends on walltime now
+#            $memoryInKbytes = $memory * 1000;
+#            print B <<"HEADER";
+##!/bin/bash
+##
+##$qtag -q $queueName
+##$qtag -o %J.log
+##$qtag -e %J.err
+##$qtag -R "rusage[mem=$memory]"
+##$qtag -M $memoryInKbytes
+##$qtag -n 1
+##$qtag -W $walltime
+##$qtag -J ${jobName}
+#HEADER
+#
+#            if($mode eq "monthly"){
+#                print B "#$qtag -t [1-$DAYSINMONTH]\n";
+#            }
+#            if($mode eq "yearly"){
+#                print B "#$qtag -t [1-$DAYSINYEAR]\n";
+#            }
+#            $canExecute = 1;
+#            if($mode eq "WAIT"){
+#                print B "$tStepsShrt $qrunid\ntouch $marker\n";
+#            } else {
+#                print B "$tStepsShrt $qrunid\n";
+#            }
+#            close(B);
+#            
+#            # Now, we need to wait for the marker to indicate completion
+#            $submit = "$qsubmit  $queueFile";
+#        } else {
+#            # do nothing, we can not launch if we don't know which parallel
+#            # system we are launching to.
+#            # but we need to trace...
+#            $submit = "$qsubmit  $queueFile";
+#        }
 
         if($canExecute == 1){
             if($execute == 1){
@@ -2396,7 +2434,7 @@ sub evaluateIF(){
 }
 
 # routine to convert decimal hours to HH:MM:SS notation
-sub decHourToHHMMSS(){
+sub decHour_ToHHMMSS(){
     my $wt = @_[0];
     my $nsec = $wt * 3600;
     my $nh = int( $nsec / 3600);
@@ -2411,7 +2449,7 @@ sub decHourToHHMMSS(){
 
 # routine to convert decimal hours to HH:MM notation
 # This notation is used at CEMS queues
-sub decHourToHHMM(){
+sub decHour_ToHHMM(){
     my $wt = @_[0];
     my $nsec = $wt * 3600;
     my $nh = int( $nsec / 3600);
