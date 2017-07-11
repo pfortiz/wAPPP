@@ -13,7 +13,7 @@ use strict;
 
 use Exporter qw(import);
 
-our @EXPORT = qw(getFromRc getNavailableProcesses getRunningJobIds getProcessDict decHourToHHMM decHourToHHMMSS getSiteParams createQsubFile);
+our @EXPORT = qw(getFromRc getNavailableProcesses getRunningJobIds getProcessDict decHourToHHMM decHourToHHMMSS getSiteParams createQsubFile pipeStats);
  
 #our @EXPORT_OK = qw(isLeap equivDateDoy dateToDoy listOfDates daysInMonth daysInYear todayInDoy datesBetween segmentedDates getListOfDates);
 
@@ -61,6 +61,10 @@ sub createRc(){
     my @parts = split(/\//, $0);
     pop @parts;
     my $myPath = join("/", @parts);
+    if($myPath eq "."){
+        $myPath = `pwd`;
+        chop($myPath);
+    }
 
     my ($site, $history, $basePath, $exec_path, $tctl_path, $bundlePath);
     my ($qtag, $pythonx, $qsubmit, $qdelete, $qquery, $err_memory);
@@ -527,12 +531,29 @@ HEADER
         
         # Now, we need to wait for the marker to indicate completion
         $submit = "bsub <  $queueFile";
+    } elsif($site eq "UOS"){
+        $walltime = &decHourToHHMMSS($qwalltime);
+        # this needs fixing
+        print B <<"HEADER";
+#!/bin/bash
+#
+#$qtag -N ${jobName}
+#$qtag -l h_rt=$walltime
+#$qtag -l pvmem=${memory}mb
+#$qtag -l procs=1
+$touchIt
+HEADER
+        $canExecute = 1;
+        close(B);
+        $submit = "qsub $queueFile";
     } else {
         # do nothing, we can not launch if we don't know which parallel
         # system we are launching to.
         # but we need to trace...
-        $submit = "$qsubmit  $queueFile";
+        $canExecute = 1;
+        $submit = "echo 'bash $queueFile'";
     }
+
     return($submit, $canExecute);
 }
 
@@ -561,5 +582,165 @@ sub decHourToHHMM(){
     my $nm = int( ($nleft/60));
     my $wally = sprintf("%02d:%02d", $nh, $nm);
     return $wally;
+}
+
+sub pipeStats(){
+
+    my $screech = shift;
+    my $logFile = shift;
+    my $site = shift;
+
+    my (@jparts, $qfile, $njobs2kill, $job, %qsubPerJob, $nerrorFiles);
+    my ($nMemExceeded, $nWallHits, $nBusError, $nOtherErrors, $jobid);
+    my ($file, $jobid, $qsubFile, $efile, @dparts, $dateId, $nerrors);
+    my (%failingMemoryNodes, @busError, %failingBuses, $fNode, @memoryFailes);
+    my (@wallHits, %failingBusNodes, %failingWallNodes, @otherErrors);
+    my (@otherErrorsText, @withErrors, @withoutErrors);
+
+    open (J, "<$logFile");
+    $njobs2kill = 0;
+    if($site eq "UOL"){
+        while(<J>){
+            chop;
+            if(/\.qsub$/){
+                @jparts = split;
+                $qfile = pop(@jparts);
+            } elsif(/Submitted job/){
+                @jparts = split;
+                $job = pop(@jparts);
+                $job =~ s/\..*//;
+                $qsubPerJob{$job} = $qfile;
+#                print "$_\nJob/qsub $job $qfile\n";
+                $njobs2kill++;
+            }
+        }
+    } elsif($site eq "CEMS"){
+        while(<J>){
+            chop;
+            if(/\.qsub$/){
+                @jparts = split;
+                $qfile = pop(@jparts);
+            } elsif(/Submitted job/){
+                @jparts = split;
+                $job = pop(@jparts);
+                $job =~ s/\..*//;
+                $qsubPerJob{$job} = $qfile;
+                print "$_\nJob/qsub $job $qfile\n";
+                $njobs2kill++;
+            }
+        }
+    } elsif($site eq "CTCP"){
+        # to be fixed 
+        while(<J>){
+            chop;
+            if(/\.qsub$/){
+                @jparts = split;
+                $qfile = pop(@jparts);
+            } elsif(/Submitted job/){
+                @jparts = split;
+                $job = pop(@jparts);
+                $job =~ s/\..*//;
+                $qsubPerJob{$job} = $qfile;
+#                print "$_\nJob/qsub $job $qfile\n";
+                $njobs2kill++;
+            }
+        }
+    } elsif($site eq "UOS"){
+        # to be fixed 
+        while(<J>){
+            chop;
+            if(/\.qsub$/){
+                @jparts = split;
+                $qfile = pop(@jparts);
+            } elsif(/Submitted job/){
+                @jparts = split;
+                $job = pop(@jparts);
+                $job =~ s/\..*//;
+                $qsubPerJob{$job} = $qfile;
+#                print "$_\nJob/qsub $job $qfile\n";
+                $njobs2kill++;
+            }
+        }
+    } else {
+    }
+    close(J);
+    open(S, "ls $screech/*.e*|");
+    $nerrorFiles = 0;
+    $nMemExceeded = 0;
+    $nWallHits = 0;
+    $nBusError = 0;
+    $nOtherErrors = 0;
+    while(<S>){
+        chop;
+        ($file, $jobid) = split(/\.e/);
+        $qsubFile = $qsubPerJob{$jobid};
+        $efile = $_;
+        open(E, "<$_");
+        # The first three lines are standard
+        $_ = <E>;
+        @dparts = split;
+        $dateId = "$dparts[2] $dparts[3] $dparts[4]";
+        $_ = <E>;
+        $_ = <E>;
+        $_ = <E>;
+        @dparts = split;
+        $fNode = $dparts[2];
+        $nerrors = 0;
+        while(<E>){
+            chop;
+            if(/^#/) { next;}   # ignore debugging lines
+            if(/Cannot allocate memory/){
+#                print "Mem.fail: $jobid qsub $qsubFile\n";
+                push @memoryFailes, $qsubFile;
+                $nMemExceeded++;
+                $failingMemoryNodes{$fNode}++;
+                $nerrors++;
+            } elsif(/Allocation would exceed/){
+                #ignore
+            } elsif(/ls: cannot access/){
+                #ignore
+            } elsif(/unknown HPC/){
+                #ignore
+            } elsif(/to run parallel/){
+                #ignore
+            } elsif(/to run in parallel/){
+                #ignore
+            } elsif(/Bus error/){
+                push @busError, $qsubFile;
+                $failingBuses{$fNode}++;
+                $failingBusNodes{$fNode}++;
+                $nBusError++;
+                $nerrors++;
+            } elsif(/job killed/ and /walltime/ and /exceeded/){
+#                print "wall.hit $jobid qsub $qsubFile\n";
+#                print "cp ${qsubFile} ${qsubFile}R\n";
+                push @wallHits, $qsubFile;
+                $failingWallNodes{$fNode}++;
+                $nWallHits++;
+                $nerrors++;
+            } else {
+                push @otherErrors, $qsubFile;
+                print "Other error:  $jobid $efile $_\n";
+                push @otherErrorsText, $_;
+                $nOtherErrors++;
+                $nerrors++;
+            }
+        }
+        if($nerrors > 0){
+#            print "With errros: $efile\n";
+            push @withErrors, $efile;
+        } else {
+            push @withoutErrors, $efile;
+        }
+        close(E);
+        $nerrorFiles++;
+    }
+    close(S);
+    print "Number of jobs in the task: $njobs2kill\n";
+    print "Number of error files: $nerrorFiles\n";
+    print "Number of memory fails: $nMemExceeded\n";
+    print "Number of wall hits $nWallHits\n";
+    print "Number of Bus error $nBusError\n";
+    print "Number of other errors $nOtherErrors\n";
 }
 

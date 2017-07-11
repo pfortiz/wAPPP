@@ -1,0 +1,40 @@
+File to store project related notes and thoughts, changes in the
+perspectives, changes in the functionality, expansion to handle other
+situations, etc. 
+
+Parts of this file are just copies of the notes added to the main pieces of
+code like AP_task_manager, AP_runPipeline and AP_assistant.
+
+
+From AP_runPipeline:
+
+From AP_task_manager:
+
+From AP_assistant:
+
+Independent notes
+
+July 11, 2017
+
+- Working on the AP_assistant to handle non-parallel systems.
+
+- Site dependencies were moved to ap_system_dependencies.pm
+
+- AP_assistant should refuse to start a project if the current directory is
+  where the code is located. This is a very common mistake made by
+  everyone, including me!
+- AP_assistant should also double check that its path is part of $PATH
+
+- AP_assistant should keep it as simple as possible, and when called
+  without arguments it should 
+    a) Create the .automatedProcessing file if it doesn't exist and exit
+    b) Create a sample bare-bone file with some basic information for the
+       user to follow.
+    c) No attempt should be made to create a '.td' or '.tm' file
+
+- AP_assistant should be able to create a sample '.tm' if so requested by
+  the user using a command line argument
+    AP_assistant -create_sample_tm
+
+- AP_assistant should also give a usage syntax description
+

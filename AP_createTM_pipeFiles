@@ -40,6 +40,14 @@ my $dailytasks = shift(@ARGV);
 my $walltime = shift(@ARGV);
 my $memory = shift(@ARGV);
 
+# Let's make this script be aware of the directory where it is activated
+# from
+
+$cwd = `pwd`;
+chop($cwd);
+@paths = split('/',$cwd);
+$path = pop(@paths);
+
 if(!-e $pipeParams){
     die "$pipeParams does not exist. Quiting\n";
 }
@@ -180,8 +188,14 @@ foreach $_ (@tparams){
 }
 
 
+if($path=~/spwn/){
+    print FT "$PROCESSOR\n";
+} else {
+    print FT "thisPipe = TASK_PATH/$pName.specific\n";
+}
+
+#thisPipe = TASK_PATH/$pName.specific
 print FT <<"DATERANGE";
-thisPipe = TASK_PATH/$pName.specific
 
 #The following line must exist
 --TASKS
@@ -210,6 +224,11 @@ close(FT);
 
 # we should evaluage whether ".specific" is necessary in the cases the main
 # task does not invoke qsub
+
+if($path=~/spwn/){
+    exit;
+}
+
 
 $daily = "$pName.specific";
 open(DP, ">$daily");

@@ -36,6 +36,10 @@ BEGIN{
     my @parts = split(/\//, $0);
     pop @parts;
     my $myPath = join("/", @parts);
+    if($myPath eq "."){
+        $myPath = `pwd`;
+        chop($myPath);
+    }
     $packagePath = $myPath;
 }
 
@@ -43,6 +47,8 @@ print "path: $packagePath\n";
 use lib "$packagePath";
 
 use ap_system_dependencies;
+use ap_timex;
+use ap_predef;
 
 my %apDict = &getFromRc();
 
@@ -53,193 +59,8 @@ foreach $_ (sort keys %apDict){
 $navail = &getNavailableProcesses(%apDict);
 print "Number of available processes: $navail\n";
 
-%rj = &getRunningJobIds(0, %apDict);
+@rj = &getRunningJobIds(%apDict);
 
-#my $packagePath;
-#my %apDict;
-#
-#BEGIN{
-#    sub getFromRc(){
-#        my $file = @_[0];
-#        my %rcDict;
-#        open(F, "<$file");
-#        while(<F>){
-#            if(/^#/ or /^$/){ next; }
-#            chop;
-#            ($key, $value) = split(/=/,$_,2);
-#            $rcDict{$key} = "$value";
-#        }
-#        close(F);
-#        return %rcDict;
-#    }
-#    
-#    
-#    sub createRc(){
-#        my $lar = @_[0];
-#        my $host = `hostname`;
-#        chop ($host);
-#        my $home = $ENV{HOME};
-#        my @parts = split(/\//, $0);
-#        pop @parts;
-#        my $myPath = join("/", @parts);
-#
-#    
-#        if(($host =~/alice/) or ($host=~/spectre/)){
-#            $site = "UOL";
-#            $history = "GT_HISTORY";
-#            $basePath = "/data/atsr";
-#            $exec_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/BIN";
-#            $tctl_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/CTL_FILES_TEMPLATES";
-#            $bundlePath = "$basePath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
-#            $qtag = "PBS";
-#            $pythonx = "python";
-#            $qsubmit = "qsub -W x=resfailpolicy:requeue";
-#            $qdelete = "qdel";
-#            $qquery = "qstat";
-#            $err_memory = "Cannot allocate memory";
-#            $err_walltime = "job killed: walltime";
-#        } elsif($host =~/rl.ac.uk/){
-#            $site = "CEMS";
-#            $history = "GT_HISTORY";
-#            $basePath = "/group_workspaces/cems/leicester";
-#            $bundlePath = "$basePath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
-#            $exec_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/BIN";
-#            $tctl_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/CTL_FILES_TEMPLATES";
-#            $pythonx = "python2.7";
-#            $qtag = "BSUB";
-#            $qsubmit = "bsub -r <";
-#            $qdelete = "bkill";
-#            $qquery = "bjobs";
-#            $err_memory = "job killed after reaching LSF memory usage limit.";
-#            $err_walltime = "job killed after reaching LSF run time limit";
-#        } elsif($host =~/acri.fr/){
-#            $site = "CTCP";
-#            $history = "GT_HISTORY";
-#            $basePath = "/a/trouver";
-#            $bundlePath = "$basePath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
-#            $exec_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/BIN";
-#            $tctl_path = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/CTL_FILES_TEMPLATES";
-#            $pythonx = "python";
-#            $qtag = "BSUB";
-#            $qsubmit = "bsub ";
-#            $qdelete = "bkill";
-#            $qquery = "bjobs";
-#            $err_memory = "Pas suffi memoir";
-#            $err_walltime = "job killed after reaching LSF run time limit";
-#        } elsif($host =~/iceberg/ or $host =~/sharc/) {
-#            print "In Iceberg/sharc, University of Sheffield.\n";
-#            # this should be a path to install as a local installation
-#            $site = "UOS";
-#            $history = "ICY_HISTORY";
-#            $basePath = "$home";
-#            $bundlePath = "$myPath";
-#            $exec_path = "$basePath/bin";
-#            $tctl_path = "$basePath/ctl_files";
-#            $pythonx = "python";
-#            $qtag = "\$";
-#            $qsubmit = "qsub";
-#            $qdelete = "qdel";
-#            $qquery = "Qstat";
-#            $err_memory = "Can not allocate memory";
-#            $err_walltime = "job killed after reaching LSF run time limit";
-#        } else {
-#            print "In no-idea-where-I-am mode\n";
-#            # this should be a path to install as a local installation
-#            $site = "node";
-#            $history = "THE_HISTORY";
-#            $basePath = "$home";
-#            $bundlePath = "$myPath";
-#            $exec_path = "$basePath/bin";
-#            $tctl_path = "$basePath/ctl_files";
-#            $pythonx = "python";
-#            $qtag = "disabled";
-#            $qsubmit = "ksub";
-#            $qdelete = "kdel";
-#            $qquery = "kstat";
-#            $err_memory = "Kein Memory";
-#            $err_walltime = "job killed after reaching LSF run time limit";
-#        }
-#
-#    
-#        open(RC, ">$lar/.automatedProcessing");
-##        $bundlePath = "SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
-#        print RC <<"RUNPIPELINERC";
-## .automatedProcessing
-## Mostly definitions which are site dependent
-#
-## This one can be UOL, CEMS, UOS, or something else to come
-#site=$site
-#
-## The path to where SOFTWARE/SCRIPTS is located
-#basePath=$basePath
-#
-## The full path to where this "package" is located
-#appath=$bundlePath
-#
-## The full path to where executables are to be found
-#exec_path=$exec_path
-#
-## The full path to where template control files are to be found
-#tctl_path=$tctl_path
-#
-## The path to where runPipe area is located
-## You can change this path to suit your needs
-#historyPath=$basePath/$history
-#
-##---------------------------------------------------------------
-## These definitions deal with parallel processing site-depending
-## commands or error messages
-#
-## Tag that goes in the submission scripts
-#qtag=$qtag
-#
-## The queue submit command
-#qsubmit=$qsubmit
-#
-## The command to delete jobs from the queue
-#qdelete=$qdelete
-#
-## The command to query the queue-manager about which jobs are running
-#qquery=$qquery
-#    
-#wtError=$err_walltime
-#memError=$err_memory
-#python=$pythonx
-#RUNPIPELINERC
-#        close(RC);
-#    }
-#
-#    my $home = $ENV{HOME};
-#    my $rcfile = "$home/.automatedProcessing";
-#    my @parts = split(/\//, $0);
-#    pop @parts;
-#    my $myPath = join("/", @parts);
-#    if(!-e $rcfile){
-#        print "$0 packagePath $myPath\n";
-#        print "Creating $rcfile \n";
-#        my $rp = `which AP_runPipeline`;
-#        chop $rp;
-#        &createRc($home);
-#        print "Please examine $rcfile to make sure no inconsistencies are found\n";
-#	exit;
-#    }
-#    %apDict = &getFromRc($rcfile);
-#    $packagePath = $apDict{"appath"};
-#    $thissite = $apDict{"site"};
-#    $historyPath = $apDict{"historyPath"};
-#    $basePath = $apDict{"basePath"};
-#print "BasePath = $basePath\n";
-#print "history = $history\n";
-#print "historyPath = $historyPath\n";
-##    print "basePath: $basePath\n";
-#}
-#
-#use lib "$packagePath";
-
-#use lib "$basePath/SOFTWARE/SCRIPTS/AUTOMATED_PROCESSING";
-#use ap_timex qw(&isLeap &daysInMonth &daysInYear &listOfDates &datesBetween &segmentedDates dateToDoy);
-use ap_timex;
-use ap_predef;
 
 # the next script is invoked to create the first versions of the pipeline
 # files
@@ -263,61 +84,111 @@ $cwd =~ s,/panfs/alice.panfs.cluster,,;
 $hasTdSamplefile = 0;
 $hasTrSamplefile = 0;
 
+$shellPath = $ENV{PATH};
+#print "PATH = $shellPath\n";
+if (! $shellPath=~/$appath/){
+    print <<"ADVICE";
+$appath is not part of your shell's variable PATH.
+It would be great if you could include $appath in the PATH variable.
+
+ADVICE
+}
+
+if($cwd eq $appath){
+    $home = $ENV{HOME};
+    print <<"MESSAGE";
+
+WARNING:
+
+You are in the project's code directory. $me will not run unless
+you are located in another directory, for instance:
+
+$home/apProjects
+
+Quiting.
+MESSAGE
+
+    exit;
+}
 
 if($#ARGV < 0){
 
-    open(TS, "ls *.td |");
-    while(<TS>){
-    #    print;
-        chop;
-        if($_ eq "sample.td"){
-            $hasTdSamplefile = 1;
-        } elsif($_ eq "sample.tr"){
-            $hasTrSamplefile = 1;
-        } else {
-            push @tdfiles, $_;
-        }
-    }
-    close(TS);
-    
-    if($hasTrSamplefile == 0){
-        &create_tr_sample_and_readme("sample");
-    }
-    if($hasTdSamplefile == 0){
-#        &create_td_sample_and_readme("sample",$OTHER);
-        &create_td_sample_and_readme("sample","ud");
-        exit;
-    } else {
-        if($#tdfiles < 0){
-            print <<"MESSAGE";
-No .td files found (other than sample.td which is ignored)
+    print <<"USAGE";
+Usage: AP_assitant [-create-bb-sample] [bb-file] [ff-file]
 
 The simplest way to start is for you to write a bare bones file (bb file)
 
 A bare-bones file has a name like "processEW.bb". The '.bb' ending is
 mandatory.
 
-A bare-bones file contains lines of the form:
+Use $me -create-bb-sample to create a sample BB file.
+USAGE
+    exit;
+}
+#    open(TS, "ls *.td |");
+#    while(<TS>){
+#    #    print;
+#        chop;
+#        if($_ eq "sample.td"){
+#            $hasTdSamplefile = 1;
+#        } elsif($_ eq "sample.tr"){
+#            $hasTrSamplefile = 1;
+#        } else {
+#            push @tdfiles, $_;
+#        }
+#    }
+#    close(TS);
+#    
+#    if($hasTrSamplefile == 0){
+#        &create_tr_sample_and_readme("sample");
+#    }
+#    if($hasTdSamplefile == 0){
+##        &create_td_sample_and_readme("sample",$OTHER);
+#        &create_td_sample_and_readme("sample","ud");
+#        exit;
+#    } else {
+#        if($#tdfiles < 0){
+#            print <<"MESSAGE";
+#No .td files found (other than sample.td which is ignored)
+#
+#
+#A bare-bones file contains lines of the form:
+#
+#taskID: <list-of-tasks-which-need-completion-before-this-one-is-run>
+#
+#eg:
+#
+#dlftp-getDataFromSiteX:
+#dlftp-getDataFromSiteY:
+#proc-processData: dlftp-getDataFromSiteX dlftp-getDataFromSiteY
+#
+#Once the '.bb' file is ready, run:
+#
+#$me <bare-bones.bb>
+#
+#MESSAGE
+#        } else {
+#            &makeStubs();
+#        }
+#    }
 
-taskID: <list-of-tasks-which-need-completion-before-this-one-is-run>
+#} else {
 
-eg:
+$nargs = $#ARGV+1;
+$inFile = shift(@ARGV);
 
-dlftp-getDataFromSiteX:
-dlftp-getDataFromSiteY:
-proc-processData: dlftp-getDataFromSiteX dlftp-getDataFromSiteY
-
-
-MESSAGE
-        } else {
-            &makeStubs();
-        }
+if($inFile eq "-create-bb-sample"){
+    if($nargs == 2){
+        $fileName = shift(@ARGV);
+    } else {
+        $fileName = "sample.bb";
     }
-
-} else {
-    $inFile = shift(@ARGV);
+    &createBBsample($fileName);
+    exit;
+}
+   
     if(!-e $inFile){
-        die "input \"tm\" file $inFile does not exist\n";
+        die "input file $inFile does not exist\n";
     }
     $_ = $inFile;
     if(/\.bb/){
@@ -609,307 +480,36 @@ MESSAGE
                     next;
                 }
             } else { 
+                ($taty,@other) = split(/-/,$tn,2);
     
                 print FF "\ntask=$tn\n";
                 print FF "$tn.origin=local\n";
                 print FF "$tn.dependencies=$tDependencies\n";
-                print FF "$tn.maxMemory=9999\n";
-                print FF "$tn.wallTime=3.14\n";
+#                print FF "## taty = $taty\n";
+#                if($taty ne "spwn"){
+                    print FF "$tn.maxMemory=9999\n";
+                    print FF "$tn.wallTime=3.14\n";
+#                }
                 print FF "$tn.timeRestrictions=*/*/*/*\n";
 print FF "# an extra dimension is provided if a list of spatial variables \n";
 print FF "# is provided as a file. See examples or documentation.\n";
                 print FF "$tn.extraDimension=\n";
-                ($taty,@other) = split(/-/,$tn,2);
                 if($dtype{$taty} eq ""){ $taty = "ud" };
                 print FF "$tn.type=$taty\n";
-                if($taty eq "proc" ){
-    
-print "historyPath.proc = $historyPath\n";
-                    print FF <<"FF_FILE";
-$tn.atMost=*
+                $ff_taty = "bb$taty";
 
-# PROCESSOR should point to an executable file eg:
-# processor=/data/atsr/SOFTWARE/FORTRAN/INTERNAL_CODE/BIN/gt_driver_rtm.exe
-$tn.processor=$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/BIN/yyy.exe
+                # this way we insure that if we introduce new types, code
+                # needs to be present for them
+                &$ff_taty();
 
-# TEMPLATE_CONTROL_FILE is used to feed initial parameters to the PROCESSOR.
-$tn.tempCtlFile=$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/CTL_FILES_TEMPLATES/LEICESTER/driver_YYY.dat
-
-$tn.parameters.begin
-# you can edit lines below this one
-HISTORY_DIR = $historyPath
-DAILY_PATH = HISTORY_DIR/YYY/SMM/SDD
-# you can edit lines above this one
-$tn.parameters.end
-
-$tn.local.begin
-# you can edit lines below this one
-echo about to submit the processing pipeline to the grid
-qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
-# you can edit lines above this one
-$tn.local.end
-
-$tn.parallel.begin
-# you can edit lines below this one
-echo  Preparing for task TASK_ID
-
-# Make sure the history directory for the day is created. PFO. 2017-06-18
-mkdir DAILY_PATH
-
-# The following line is an example only, but you may need to change
-# non-standard fields in the control file
-#exec FLEX_MAKE_CONTROL TEMPLATE_CONTROL selected_year=YYY selected_month=SMM selected_day=SDD > CONTROL_FILE
-exec MAKE_CONTROL TEMPLATE_CONTROL YYY-SMM-SDD > CONTROL_FILE
-sexec PROCESSOR < CONTROL_FILE > LOG_FILE
-assignto hasDone command EXAMINE_DONE LOG_FILE -z
-if hasDone gt 0 then
-    sexec touch DONE_TRACER
-    sexec rm CONTROL_FILE
-    # uncomment next line to compress the log-file
-    # sexec gzip LOG_FILE
-    # if you never need them, get rid of the log-file
-    # sexec rm LOG_FILE
-    # sexec touch DONE_TRACER
-else
-    sexec touch FAIL_TRACER
-endif
-
-# you can edit lines above this one
-$tn.parallel.end
-FF_FILE
-
-                } 
-                if($taty  eq "dqc" ){
-                    print FF <<"FF_FILE";
-$tn.atMost=*
-
-# This task is defined only for GT created products.
-# eg: /data/atsr/SEVIRI /group_workspaces/cems2/nceo_generic/nceo_uol_atsr/MODIS
-$tn.basepath=
-
-# The product code is for example : GT_MOG_2P, GT_MYG_3U, etc.
-$tn.product_code=
-
-$tn.parameters.begin
-# you can edit lines below this one
-HISTORY_DIR = $historyPath
-DAILY_PATH = HISTORY_DIR/YYY/SMM/SDD
-PRODUCT_CODE = ($tn.product_code)
-PATH_TO_PRODUCT = ($tn.basepath)
-LOG_FILE = DAILY_PATH/verify_PRODUCT_CODE_YYY_SMM_SDD.log
-# you can edit lines above this one
-$tn.parameters.end
-
-$tn.local.begin
-qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
-$tn.local.end
-
-$tn.parallel.begin
-# Make sure the history directory for the day is created. PFO. 2017-06-18
-mkdir DAILY_PATH
-
-sexec MONTY VERIFIER PATH_TO_PRODUCT/YYY/SMM/SDD/PRODUCT_CODE  > LOG_FILE
-sexec touch DONE_TRACER
-$tn.parallel.end
-
-FF_FILE
-
-                } 
-
-                if($taty  eq "dlftp" ){
-                    print FF <<"FF_FILE";
-$tn.atMost=42
-
-$tn.ftp_site=
-$tn.username=anonymous
-$tn.password=your-email
-
-# eg: /allData/6/MOD11_L2/YYY/SDOY
-$tn.remote_path=
-
-# eg: /data/atsr/MODIS/YYY/SMM/SDD/MOD11_L2
-$tn.local_path=
-
-# It is a pattern to be found in each file to copy. Some places do not keep
-# everything organised by day, and all days remain in the same directory.
-# eg: YYYSMMSDD
-$tn.pattern=
-
-$tn.parameters.begin
-# you can edit lines below this one
-# add any parameter definition in the form KEY=VALUE
-# you can edit lines above this one
-$tn.parameters.end
-
-$tn.local.begin
-echo about to submit the processing pipeline to the grid
-qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
-$tn.local.end
-
-$tn.parallel.begin
-assignto ftpResult command MONTY DOWNLOADER FTP_CONFIG ($tn.remote_path) ($tn.local_path) ($tn.pattern)
-if ftpResult eq Successful-ftp then
-    sexec touch DONE_TRACER
-else
-    sexec touch FAIL_TRACER
-endif
-$tn.parallel.end
-FF_FILE
-
-                } 
-
-                if($taty  eq "ulftp" ){
-                    print FF <<"FF_FILE";
-$tn.atMost=42
-
-$tn.ftp_site=
-$tn.username=anonymous
-$tn.password=your-email
-
-# eg: /allData/6/MOD11_L2/YYY/SDOY
-$tn.remote_path=
-
-# eg: /data/atsr/MODIS/YYY/SMM/SDD/MOD11_L2
-$tn.local_path=
-
-# It is a pattern to be found in each file to copy. Some places do not keep
-# everything organised by day, and all days remain in the same directory.
-# eg: MOD10-SEVGP
-$tn.pattern=
-
-$tn.parameters.begin
-# you can edit lines below this one
-# add any parameter definition in the form KEY=VALUE
-# you can edit lines above this one
-$tn.parameters.end
-
-$tn.local.begin
-echo about to submit the processing pipeline to the grid
-qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
-$tn.local.end
-
-$tn.parallel.begin
-assignto ftpResult command MONTY UPLOADER FTP_CONFIG ($tn.local_path) ($tn.remote_path) ($tn.pattern)
-if ftpResult eq Successful-ftp then
-    sexec touch DONE_TRACER
-else
-    sexec touch FAIL_TRACER
-endif
-
-$tn.parallel.end
-FF_FILE
-
-                } 
-                if($taty  eq "rsync" ){
-                    print FF <<"FF_FILE";
-$tn.atMost=12
-
-# either SOURCE_PATH or DEST_PATH must contain the login details
-# refers to the path where to locate the data at the remote level
-# eg: # pfortiz\@cems-xfer1.cems.rl.ac.uk:/group_workspaces/cems2/eustace/data/incoming/MODIS/YYY/SMM/SDD/GT_MOG_2P
-$tn.source_path=
-
-# refers to the path where to download the data into the local server
-# eg: /data/atsr/MODIS/YYY/SMM/SDD
-# If your destination path is local, it must exist first!
-# NOTE: The last component of the SOURCE_PATH should not be included in the
-#       DEST_PATH, as shown above
-$tn.dest_path=
-
-
-# It is a pattern to be found in each file to copy. There may be more than
-# one file kind in a directory, and you want to transfer just some of them
-# eg, *MOD10-SEV20*.nc   (for products of the SS matchups)
-$tn.pattern=
-
-# Any flags you may want to pass to rsync, 
-# eg: -rvh --ignore-existing
-$tn.rsync-flags=-rh --ignore-existing
-
-$tn.parameters.begin
-# you can edit lines below this one
-# add any parameter definition in the form KEY=VALUE
-# you can edit lines above this one
-$tn.parameters.end
-
-$tn.local.begin
-echo about to start rsync from the main nodes
-#TO BE FIXED...
-if ($tn.dest_path) missing then
-    sexec mkdir -p ($tn.dest_path)
-endif
-sexec X_WRAPPER "rsync ($tn.rsync_flags) --include ($tn.pattern) ($tn.source_path) ($tn.dest_path)" DONE_TRACER &
-# uncomment the next line if you can run rsync from the nodes
-# qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave
-$tn.local.end
-
-$tn.parallel.begin
-#sexec X_WRAPPER "rsync $rsync_flags --include $pattern $source_path $dest_path" DONE_TRACER &
-$tn.parallel.end
-
-FF_FILE
-
-                } 
-                if($taty  eq "dxst" ){
-                    print FF <<"FF_FILE";
-$tn.atMost=*
-
-# eg: /data/atsr/SEVIRI/YYY/SMM/SDD/GT_SEV_2P
-$tn.data_path=
-
-# A pattern to be found in sought files (eg: YYYSMMSDD )
-$tn.file_pattern=
-
-# In case the presence of a directory is not enough, and another piece of
-# software "marks" the directory as fully downloaded by creating a
-# tracer-file, this is the file name to use. eg: all-data-in
-$tn.tracer_file=
-
-$tn.parameters.begin
-# you can edit lines below this one
-#eg /data/atsr/S3MPC/YYY/SMM/SDD/SL_2_LST
-PATH_TO_DATA = ($tn.data_path)
-FILE_PATTERN = ($tn.file_pattern)
-#eg daily_data_in
-DATA_TRACER = ($tn.tracer_file)
-
-# you can edit lines above this one
-$tn.parameters.end
-
-$tn.local.begin
-assignto hasData command GET_PATH_CONTENT path=($tn.data_path) fp=($tn.file_pattern) dt=($tn.tracer_file) -count
-if hasData gt 0 then
-    sexec touch DONE_TRACER
-else
-    sexec touch FAIL_TRACER
-endif
-$tn.local.end
-
-$tn.parallel.begin
-$tn.parallel.end
-
-FF_FILE
-
-                }
-                if($taty  eq "ud" ){
-                    print FF <<"FF_FILE";
-$tn.atMost=*
-$tn.parameters.begin
-# you can edit lines below this one
-# you can edit lines above this one
-$tn.parameters.end
-
-$tn.local.begin
-# you can edit lines below this one
-echo about to submit the processing pipeline to the grid
-qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
-$tn.local.end
-
-$tn.parallel.begin
-# you can edit lines below this one
-$tn.parallel.end
-FF_FILE
-                }
+#                if($taty eq "proc" ){ } 
+#                if($taty eq "spwn" ){ } 
+#                if($taty  eq "dqc" ){ } 
+#                if($taty  eq "dlftp" ){ } 
+#                if($taty  eq "ulftp" ){ } 
+#                if($taty  eq "rsync" ){ } 
+#                if($taty  eq "dxst" ){ }
+#                if($taty  eq "ud" ){ }
             }
         }
 
@@ -939,6 +539,7 @@ INSTRUCTIONS
     } elsif(/\.ff/){
         # we work from a fully-fleshed file, containing all the information
         # needed.
+
         open(FF, "<$inFile");
         while(<FF>){
             chop;
@@ -1031,7 +632,7 @@ INSTRUCTIONS
                 }
             }
 
-            print "Extra dimesion for $t: $txd\n";
+            print "Extra dimension for $t: $txd\n";
             $tdp = $ffdict{"$t.dependencies"};
             $tpl = $ffdict{"$t.parallel"};
             $tlc = $ffdict{"$t.local"};
@@ -1047,7 +648,8 @@ INSTRUCTIONS
             if(!-e $dire){
                 system("mkdir -p -m 775 $dire");
             }
-            if($tty eq "proc" and $tor eq "local"){
+            # nothing special to do in the case of a spwn
+            if(($tty eq "proc" or $tty eq "spwn") and $tor eq "local"){
                 if(-e $tcf){
                     system("cp $tcf $dire");
                 } else {
@@ -1058,6 +660,8 @@ INSTRUCTIONS
                     open(P,">$file");
                     print P "$tpr\n";
                     close(P);
+                } else {
+                    print "WARNING: processor not found\n$tpr\n";
                 }
             }
             if($tty eq "dlftp" or $tty eq "ulftp"){
@@ -1096,6 +700,7 @@ INSTRUCTIONS
                 close(PARLL);
             }
             chdir($dire);
+            print "$mkplfiles parameters.rpl local.rpl parallel.rpl $twt $txm\n";
             system("$mkplfiles parameters.rpl local.rpl parallel.rpl $twt $txm");
             chdir($cwd);
             
@@ -1123,9 +728,43 @@ faulty control file will produce rubish data.
 
 INSTRUCTIONS
     }
-}
+
 
 exit;
+
+sub createBBsample(){
+    $fname = shift;
+
+    open(BB, ">$fname");
+    $explain = &cexp();
+    print BB <<"HEADER";
+#A bare-bones file contains lines of the form:
+#
+#taskID: <list-of-tasks-which-need-completion-before-this-one-is-run>
+#
+# Task names should contain prefixes which help define the full information
+# according to their functionality
+${explain}#eg:
+
+dlftp-getDataFromSiteX:
+dlftp-getDataFromSiteY:
+spwn-processData: dlftp-getDataFromSiteX dlftp-getDataFromSiteY
+spwn-applyModels: proc-processData
+
+HEADER
+    foreach $t (keys %ap_predef::pdtx){
+        print BB "#\t$t : $pdtx{$t}\n";
+    }
+    close(BB);
+
+    print <<"MESSAGE";
+
+Once you have a  '.bb' file ready, run:
+
+$me $fileName
+
+MESSAGE
+}
 
 sub timestamp(){
     ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) =
@@ -1882,6 +1521,28 @@ TEMPLATE_CONTROL_FILE=control-file-name
 SAMPLE_FILE
 
     } 
+
+    if($kind  eq "ud"   or $kind eq "spwn" ){
+#    if(($kind  & $GT_PROCESSING ) == $GT_PROCESSING ){
+        print S <<"SAMPLE_FILE";
+# The following information is necessary if type == spwn
+#----------------------------------------------------------------
+
+# PROCESSOR should point to an executable file
+# eg: processor=getDataFromEW
+# If you need another kind of processing piece,  define your type as OTHER
+PROCESSOR=$exec_path/processThis.exe
+
+
+# TEMPLATE_CONTROL_FILE is a file used to pass parameters to PROCESSOR as a
+# first command line argument
+# A full path will use exactly that file
+TEMPLATE_CONTROL_FILE=params_file
+
+SAMPLE_FILE
+
+    } 
+
 #    if(($kind  & $GT_DATA_VALIDATION ) == $GT_DATA_VALIDATION ){
     if($kind  eq "dqc" or $kind eq "ud" ){
         print S <<"SAMPLE_FILE";
@@ -2023,4 +1684,346 @@ SAMPLE_FILE
     close(S);
 }
 
+
+sub bbproc(){    
+    print "historyPath.proc = $historyPath\n";
+    print FF <<"FF_FILE";
+$tn.atMost=*
+
+# PROCESSOR should point to an executable file eg:
+# processor=/data/atsr/SOFTWARE/FORTRAN/INTERNAL_CODE/BIN/gt_driver_rtm.exe
+$tn.processor=$exec_path/yyy.exe
+
+# TEMPLATE_CONTROL_FILE is used to feed initial parameters to the PROCESSOR.
+$tn.tempCtlFile=$tctl_path/driver_YYY.dat
+
+$tn.parameters.begin
+# you can edit lines below this one
+HISTORY_DIR = $historyPath
+DAILY_PATH = HISTORY_DIR/YYY/SMM/SDD
+# you can edit lines above this one
+$tn.parameters.end
+
+$tn.local.begin
+# you can edit lines below this one
+echo about to submit the processing pipeline to the grid
+qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
+# you can edit lines above this one
+$tn.local.end
+
+$tn.parallel.begin
+# you can edit lines below this one
+echo  Preparing for task TASK_ID
+
+# Make sure the history directory for the day is created. PFO. 2017-06-18
+mkdir DAILY_PATH
+
+# The following line is an example only, but you may need to change
+# non-standard fields in the control file
+#exec FLEX_MAKE_CONTROL TEMPLATE_CONTROL selected_year=YYY selected_month=SMM selected_day=SDD > CONTROL_FILE
+exec MAKE_CONTROL TEMPLATE_CONTROL YYY-SMM-SDD > CONTROL_FILE
+sexec PROCESSOR < CONTROL_FILE > LOG_FILE
+assignto hasDone command EXAMINE_DONE LOG_FILE -z
+if hasDone gt 0 then
+    sexec touch DONE_TRACER
+    sexec rm CONTROL_FILE
+    # uncomment next line to compress the log-file
+    # sexec gzip LOG_FILE
+    # if you never need them, get rid of the log-file
+    # sexec rm LOG_FILE
+    # sexec touch DONE_TRACER
+else
+    sexec touch FAIL_TRACER
+endif
+
+# you can edit lines above this one
+$tn.parallel.end
+FF_FILE
+}
+
+sub bbud(){
+    print FF <<"FF_FILE";
+$tn.atMost=*
+$tn.parameters.begin
+# you can edit lines below this one
+# you can edit lines above this one
+$tn.parameters.end
+
+$tn.local.begin
+# you can edit lines below this one
+echo about to submit the processing pipeline to the grid
+qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
+$tn.local.end
+
+$tn.parallel.begin
+# you can edit lines below this one
+$tn.parallel.end
+FF_FILE
+}
+
+sub bbdxst(){
+    print FF <<"FF_FILE";
+$tn.atMost=*
+
+# eg: /data/atsr/SEVIRI/YYY/SMM/SDD/GT_SEV_2P
+$tn.data_path=
+
+# A pattern to be found in sought files (eg: YYYSMMSDD )
+$tn.file_pattern=
+
+# In case the presence of a directory is not enough, and another piece of
+# software "marks" the directory as fully downloaded by creating a
+# tracer-file, this is the file name to use. eg: all-data-in
+$tn.tracer_file=
+
+$tn.parameters.begin
+# you can edit lines below this one
+#eg /data/atsr/S3MPC/YYY/SMM/SDD/SL_2_LST
+PATH_TO_DATA = ($tn.data_path)
+FILE_PATTERN = ($tn.file_pattern)
+#eg daily_data_in
+DATA_TRACER = ($tn.tracer_file)
+
+# you can edit lines above this one
+$tn.parameters.end
+
+$tn.local.begin
+assignto hasData command GET_PATH_CONTENT path=($tn.data_path) fp=($tn.file_pattern) dt=($tn.tracer_file) -count
+if hasData gt 0 then
+    sexec touch DONE_TRACER
+else
+    sexec touch FAIL_TRACER
+endif
+$tn.local.end
+
+$tn.parallel.begin
+$tn.parallel.end
+
+FF_FILE
+}
+
+sub bbrsync(){
+    print FF <<"FF_FILE";
+$tn.atMost=12
+
+# either SOURCE_PATH or DEST_PATH must contain the login details
+# refers to the path where to locate the data at the remote level
+# eg: # pfortiz\@cems-xfer1.cems.rl.ac.uk:/group_workspaces/cems2/eustace/data/incoming/MODIS/YYY/SMM/SDD/GT_MOG_2P
+$tn.source_path=
+
+# refers to the path where to download the data into the local server
+# eg: /data/atsr/MODIS/YYY/SMM/SDD
+# If your destination path is local, it must exist first!
+# NOTE: The last component of the SOURCE_PATH should not be included in the
+#       DEST_PATH, as shown above
+$tn.dest_path=
+
+
+# It is a pattern to be found in each file to copy. There may be more than
+# one file kind in a directory, and you want to transfer just some of them
+# eg, *MOD10-SEV20*.nc   (for products of the SS matchups)
+$tn.pattern=
+
+# Any flags you may want to pass to rsync, 
+# eg: -rvh --ignore-existing
+$tn.rsync-flags=-rh --ignore-existing
+
+$tn.parameters.begin
+# you can edit lines below this one
+# add any parameter definition in the form KEY=VALUE
+# you can edit lines above this one
+$tn.parameters.end
+
+$tn.local.begin
+echo about to start rsync from the main nodes
+#TO BE FIXED...
+if ($tn.dest_path) missing then
+    sexec mkdir -p ($tn.dest_path)
+endif
+sexec X_WRAPPER "rsync ($tn.rsync_flags) --include ($tn.pattern) ($tn.source_path) ($tn.dest_path)" DONE_TRACER &
+# uncomment the next line if you can run rsync from the nodes
+# qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave
+$tn.local.end
+
+$tn.parallel.begin
+#sexec X_WRAPPER "rsync $rsync_flags --include $pattern $source_path $dest_path" DONE_TRACER &
+$tn.parallel.end
+
+FF_FILE
+}
+
+sub bbspwn(){
+    print "historyPath.proc = $historyPath\n";
+    print FF <<"FF_FILE";
+$tn.atMost=*
+
+# PROCESSOR should point to an executable file eg:
+# processor=/$basePath/gt_driver_rtm.exe
+$tn.processor=$exec_path/yyy.exe
+
+# TEMPLATE_CONTROL_FILE is used to feed initial parameters to the PROCESSOR.
+$tn.tempCtlFile=$tctl_path/driver_YYY.dat
+
+$tn.parameters.begin
+# you can edit lines below this one
+HISTORY_DIR = $historyPath
+DAILY_PATH = HISTORY_DIR/YYY/SMM/SDD
+# you can edit lines above this one
+$tn.parameters.end
+
+$tn.locale.begin
+# you can edit lines below this one
+echo about to submit the processing pipeline to the grid
+qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
+# you can edit lines above this one
+$tn.locale.end
+
+$tn.local.begin
+# you can edit lines below this one
+echo  Preparing for task TASK_ID
+
+# Make sure the history directory for the day is created. PFO. 2017-06-18
+mkdir DAILY_PATH
+
+# The following line is an example only, but you may need to change
+# non-standard fields in the control file
+#exec FLEX_MAKE_CONTROL TEMPLATE_CONTROL selected_year=YYY selected_month=SMM selected_day=SDD > CONTROL_FILE
+exec MAKE_CONTROL TEMPLATE_CONTROL YYY-SMM-SDD > CONTROL_FILE
+sexec PROCESSOR CONTROL_FILE > LOG_FILE
+assignto hasDone command EXAMINE_DONE LOG_FILE -z
+if hasDone gt 0 then
+    sexec touch DONE_TRACER
+    sexec rm CONTROL_FILE
+    # uncomment next line to compress the log-file
+    # sexec gzip LOG_FILE
+    # if you never need them, get rid of the log-file
+    # sexec rm LOG_FILE
+    # sexec touch DONE_TRACER
+else
+    sexec touch FAIL_TRACER
+endif
+
+# you can edit lines above this one
+$tn.local.end
+FF_FILE
+}
+
+sub bbdqc(){
+    print FF <<"FF_FILE";
+$tn.atMost=*
+
+# This task is defined only for GT created products.
+# eg: /data/atsr/SEVIRI /group_workspaces/cems2/nceo_generic/nceo_uol_atsr/MODIS
+$tn.basepath=
+
+# The product code is for example : GT_MOG_2P, GT_MYG_3U, etc.
+$tn.product_code=
+
+$tn.parameters.begin
+# you can edit lines below this one
+HISTORY_DIR = $historyPath
+DAILY_PATH = HISTORY_DIR/YYY/SMM/SDD
+PRODUCT_CODE = ($tn.product_code)
+PATH_TO_PRODUCT = ($tn.basepath)
+LOG_FILE = DAILY_PATH/verify_PRODUCT_CODE_YYY_SMM_SDD.log
+# you can edit lines above this one
+$tn.parameters.end
+
+$tn.local.begin
+qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
+$tn.local.end
+
+$tn.parallel.begin
+# Make sure the history directory for the day is created. PFO. 2017-06-18
+mkdir DAILY_PATH
+
+sexec MONTY VERIFIER PATH_TO_PRODUCT/YYY/SMM/SDD/PRODUCT_CODE  > LOG_FILE
+sexec touch DONE_TRACER
+$tn.parallel.end
+
+FF_FILE
+}
+
+sub bbdlftp(){
+    print FF <<"FF_FILE";
+$tn.atMost=42
+
+$tn.ftp_site=
+$tn.username=anonymous
+$tn.password=your-email
+
+# eg: /allData/6/MOD11_L2/YYY/SDOY
+$tn.remote_path=
+
+# eg: /data/atsr/MODIS/YYY/SMM/SDD/MOD11_L2
+$tn.local_path=
+
+# It is a pattern to be found in each file to copy. Some places do not keep
+# everything organised by day, and all days remain in the same directory.
+# eg: YYYSMMSDD
+$tn.pattern=
+
+$tn.parameters.begin
+# you can edit lines below this one
+# add any parameter definition in the form KEY=VALUE
+# you can edit lines above this one
+$tn.parameters.end
+
+$tn.local.begin
+echo about to submit the processing pipeline to the grid
+qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
+$tn.local.end
+
+$tn.parallel.begin
+assignto ftpResult command MONTY DOWNLOADER FTP_CONFIG ($tn.remote_path) ($tn.local_path) ($tn.pattern)
+if ftpResult eq Successful-ftp then
+    sexec touch DONE_TRACER
+else
+    sexec touch FAIL_TRACER
+endif
+$tn.parallel.end
+FF_FILE
+}
+
+sub bbulftp(){
+    print FF <<"FF_FILE";
+$tn.atMost=42
+
+$tn.ftp_site=
+$tn.username=anonymous
+$tn.password=your-email
+
+# eg: /allData/6/MOD11_L2/YYY/SDOY
+$tn.remote_path=
+
+# eg: /data/atsr/MODIS/YYY/SMM/SDD/MOD11_L2
+$tn.local_path=
+
+# It is a pattern to be found in each file to copy. Some places do not keep
+# everything organised by day, and all days remain in the same directory.
+# eg: MOD10-SEVGP
+$tn.pattern=
+
+$tn.parameters.begin
+# you can edit lines below this one
+# add any parameter definition in the form KEY=VALUE
+# you can edit lines above this one
+$tn.parameters.end
+
+$tn.local.begin
+echo about to submit the processing pipeline to the grid
+qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
+$tn.local.end
+
+$tn.parallel.begin
+assignto ftpResult command MONTY UPLOADER FTP_CONFIG ($tn.local_path) ($tn.remote_path) ($tn.pattern)
+if ftpResult eq Successful-ftp then
+    sexec touch DONE_TRACER
+else
+    sexec touch FAIL_TRACER
+endif
+
+$tn.parallel.end
+FF_FILE
+}
 

@@ -887,7 +887,7 @@ if($execute == $QDELETE){
 
     undef @withErrors;
 
-    &pipeStats($scratch);
+    &pipeStats($scratch, $logFile, $site);
 
     # Time to do something
     # We could start by unlinking the files without errors??
@@ -962,7 +962,7 @@ if($execute == $QDELETE){
 } elsif($execute == $QSTATS){
     print "Scratch area: $scratch\n";
 
-    &pipeStats($scratch);
+    &pipeStats($scratch, $logFile, $site);
 
     print "Nodes failing memory:\n";
     foreach $_ (sort keys %failingMemoryNodes){
@@ -2208,122 +2208,123 @@ if($qsubMsg eq ""){
 
 exit;
 
-sub pipeStats(){
-    my $screech = @_[0];
-    open (J, "<$logFile");
-    $njobs2kill = 0;
-    if($site eq "UOL"){
-        while(<J>){
-            chop;
-            if(/\.qsub$/){
-                @jparts = split;
-                $qfile = pop(@jparts);
-            } elsif(/Submitted job/){
-                @jparts = split;
-                $job = pop(@jparts);
-                $job =~ s/\..*//;
-                $qsubPerJob{$job} = $qfile;
+# this routine should go
+#sub pipeStatus(){
+#    my $screech = @_[0];
+#    open (J, "<$logFile");
+#    $njobs2kill = 0;
+#    if($site eq "UOL"){
+#        while(<J>){
+#            chop;
+#            if(/\.qsub$/){
+#                @jparts = split;
+#                $qfile = pop(@jparts);
+#            } elsif(/Submitted job/){
+#                @jparts = split;
+#                $job = pop(@jparts);
+#                $job =~ s/\..*//;
+#                $qsubPerJob{$job} = $qfile;
+##                print "$_\nJob/qsub $job $qfile\n";
+#                $njobs2kill++;
+#            }
+#        }
+#    } elsif($site eq "CEMS"){
+#        while(<J>){
+#            chop;
+#            if(/\.qsub$/){
+#                @jparts = split;
+#                $qfile = pop(@jparts);
+#            } elsif(/Submitted job/){
+#                @jparts = split;
+#                $job = pop(@jparts);
+#                $job =~ s/\..*//;
+#                $qsubPerJob{$job} = $qfile;
 #                print "$_\nJob/qsub $job $qfile\n";
-                $njobs2kill++;
-            }
-        }
-    } elsif($site eq "CEMS"){
-        while(<J>){
-            chop;
-            if(/\.qsub$/){
-                @jparts = split;
-                $qfile = pop(@jparts);
-            } elsif(/Submitted job/){
-                @jparts = split;
-                $job = pop(@jparts);
-                $job =~ s/\..*//;
-                $qsubPerJob{$job} = $qfile;
-                print "$_\nJob/qsub $job $qfile\n";
-                $njobs2kill++;
-            }
-        }
-    } else {
-    }
-    close(J);
-    open(S, "ls $screech/*.e*|");
-    $nerrorFiles = 0;
-    $nMemExceeded = 0;
-    $nWallHits = 0;
-    $nBusError = 0;
-    $nOtherErrors = 0;
-    while(<S>){
-        chop;
-        ($file, $jobid) = split(/\.e/);
-        $qsubFile = $qsubPerJob{$jobid};
-        $efile = $_;
-        open(E, "<$_");
-        # The first three lines are standard
-        $_ = <E>;
-        @dparts = split;
-        $dateId = "$dparts[2] $dparts[3] $dparts[4]";
-        $_ = <E>;
-        $_ = <E>;
-        $_ = <E>;
-        @dparts = split;
-        $fNode = $dparts[2];
-        $nerrors = 0;
-        while(<E>){
-            chop;
-            if(/^#/) { next;}   # ignore debugging lines
-            if(/Cannot allocate memory/){
-#                print "Mem.fail: $jobid qsub $qsubFile\n";
-                push @memoryFailes, $qsubFile;
-                $nMemExceeded++;
-                $failingMemoryNodes{$fNode}++;
-                $nerrors++;
-            } elsif(/Allocation would exceed/){
-                #ignore
-            } elsif(/ls: cannot access/){
-                #ignore
-            } elsif(/unknown HPC/){
-                #ignore
-            } elsif(/to run parallel/){
-                #ignore
-            } elsif(/to run in parallel/){
-                #ignore
-            } elsif(/Bus error/){
-                push @busError, $qsubFile;
-                $failingBuses{$fNode}++;
-                $failingBusNodes{$fNode}++;
-                $nBusError++;
-                $nerrors++;
-            } elsif(/job killed/ and /walltime/ and /exceeded/){
-#                print "wall.hit $jobid qsub $qsubFile\n";
-#                print "cp ${qsubFile} ${qsubFile}R\n";
-                push @wallHits, $qsubFile;
-                $failingWallNodes{$fNode}++;
-                $nWallHits++;
-                $nerrors++;
-            } else {
-                push @otherErrors, $qsubFile;
-                print "Other error:  $jobid $efile $_\n";
-                push @otherErrorsText, $_;
-                $nOtherErrors++;
-                $nerrors++;
-            }
-        }
-        if($nerrors > 0){
-#            print "With errros: $efile\n";
-            push @withErrors, $efile;
-        } else {
-            push @withoutErrors, $efile;
-        }
-        close(E);
-        $nerrorFiles++;
-    }
-    close(S);
-    print "Number of jobs in the task: $njobs2kill\n";
-    print "Number of error files: $nerrorFiles\n";
-    print "Number of memory fails: $nMemExceeded\n";
-    print "Number of wall hits $nWallHits\n";
-    print "Number of Bus error $nBusError\n";
-    print "Number of other errors $nOtherErrors\n";
-}
+#                $njobs2kill++;
+#            }
+#        }
+#    } else {
+#    }
+#    close(J);
+#    open(S, "ls $screech/*.e*|");
+#    $nerrorFiles = 0;
+#    $nMemExceeded = 0;
+#    $nWallHits = 0;
+#    $nBusError = 0;
+#    $nOtherErrors = 0;
+#    while(<S>){
+#        chop;
+#        ($file, $jobid) = split(/\.e/);
+#        $qsubFile = $qsubPerJob{$jobid};
+#        $efile = $_;
+#        open(E, "<$_");
+#        # The first three lines are standard
+#        $_ = <E>;
+#        @dparts = split;
+#        $dateId = "$dparts[2] $dparts[3] $dparts[4]";
+#        $_ = <E>;
+#        $_ = <E>;
+#        $_ = <E>;
+#        @dparts = split;
+#        $fNode = $dparts[2];
+#        $nerrors = 0;
+#        while(<E>){
+#            chop;
+#            if(/^#/) { next;}   # ignore debugging lines
+#            if(/Cannot allocate memory/){
+##                print "Mem.fail: $jobid qsub $qsubFile\n";
+#                push @memoryFailes, $qsubFile;
+#                $nMemExceeded++;
+#                $failingMemoryNodes{$fNode}++;
+#                $nerrors++;
+#            } elsif(/Allocation would exceed/){
+#                #ignore
+#            } elsif(/ls: cannot access/){
+#                #ignore
+#            } elsif(/unknown HPC/){
+#                #ignore
+#            } elsif(/to run parallel/){
+#                #ignore
+#            } elsif(/to run in parallel/){
+#                #ignore
+#            } elsif(/Bus error/){
+#                push @busError, $qsubFile;
+#                $failingBuses{$fNode}++;
+#                $failingBusNodes{$fNode}++;
+#                $nBusError++;
+#                $nerrors++;
+#            } elsif(/job killed/ and /walltime/ and /exceeded/){
+##                print "wall.hit $jobid qsub $qsubFile\n";
+##                print "cp ${qsubFile} ${qsubFile}R\n";
+#                push @wallHits, $qsubFile;
+#                $failingWallNodes{$fNode}++;
+#                $nWallHits++;
+#                $nerrors++;
+#            } else {
+#                push @otherErrors, $qsubFile;
+#                print "Other error:  $jobid $efile $_\n";
+#                push @otherErrorsText, $_;
+#                $nOtherErrors++;
+#                $nerrors++;
+#            }
+#        }
+#        if($nerrors > 0){
+##            print "With errros: $efile\n";
+#            push @withErrors, $efile;
+#        } else {
+#            push @withoutErrors, $efile;
+#        }
+#        close(E);
+#        $nerrorFiles++;
+#    }
+#    close(S);
+#    print "Number of jobs in the task: $njobs2kill\n";
+#    print "Number of error files: $nerrorFiles\n";
+#    print "Number of memory fails: $nMemExceeded\n";
+#    print "Number of wall hits $nWallHits\n";
+#    print "Number of Bus error $nBusError\n";
+#    print "Number of other errors $nOtherErrors\n";
+#}
 
 sub evaluateIF(){
     my ($lefty, $compy, $righty) = @_;

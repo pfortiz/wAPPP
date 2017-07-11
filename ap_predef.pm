@@ -16,7 +16,7 @@ $pdtx{"dqc"} = "a task dealing with data validation";
 $pdtx{"dxst"} = "a task to verify if data exists";
 $pdtx{"ulftp"} = "a task dealing with ftp uploads to a remote site";
 $pdtx{"rsync"} = "a task to transfer data (upload/download) using rsync";
-$pdtx{"spwn"} = "a task to be spawned by the shell..";
+$pdtx{"spwn"} = "any task not to be run in parallel";
 $pdtx{"ud"} = "a task not defined above. To be defined from scratch.";
 
 $pdtf{"dlftp"} = 1;
@@ -41,7 +41,7 @@ our @EXPORT = qw(pexp cexp getAPflags getAPtypes);
  
 sub pexp(){
     my $explain = "";
-    foreach $_ (@pdtp){
+    foreach $_ (keys %pdtx){
         $explain .= sprintf("%-6s = %s\n", $_."-", $pdtx{$_});
     }
     return $explain;
@@ -49,7 +49,7 @@ sub pexp(){
 
 sub cexp(){
     my $explain = "";
-    foreach $_ (@pdtp){
+    foreach $_ (sort keys %pdtx){
         $explain .= sprintf("# %-6s = %s\n", $_."-", $pdtx{$_});
     }
     return $explain;
