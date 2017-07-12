@@ -7,6 +7,9 @@
 package ap_timex;
 
 use strict;
+use Time::Local;
+use Date::Parse;
+
 
 
 my @timeUnits = qw(day month year century hour minute second);
@@ -15,9 +18,9 @@ my @monthsInWords = qw(dummy January February March April May June July August S
 
 use Exporter qw(import);
  
-our @EXPORT_OK = qw(isLeap equivDateDoy dateToDoy listOfDates daysInMonth daysInYear todayInDoy datesBetween segmentedDates getListOfDates);
+#our @EXPORT_OK = qw(isLeap equivDateDoy dateToDoy listOfDates daysInMonth daysInYear todayInDoy datesBetween segmentedDates getListOfDates);
 
-our @EXPORT = qw(isLeap equivDateDoy dateToDoy listOfDates daysInMonth daysInYear todayInDoy datesBetween segmentedDates getListOfDates);
+our @EXPORT = qw(isLeap equivDateDoy dateToDoy listOfDates daysInMonth daysInYear todayInDoy datesBetween segmentedDates getListOfDates getSpecialDates getUTCat00);
  
  
 # get the list of dates in a valid date-string
@@ -474,5 +477,62 @@ sub segmentedDates {
 
 }
  
+# produce a list of dates based on a time directive
+sub getSpecialDates(){
+    my $directive = shift;
+    my $initialTime = time; # time in unix time-stamp
+    my @lodates;
+    my ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst);
+    my ($yy, $mm, $dd);
+    print "TimeStamp: $initialTime\n";
+    if($directive eq "today-local-time"){
+        ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) = localtime($initialTime);
+    } elsif($directive eq "yesterday-local-time"){
+        $initialTime -= 86400;
+        ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) = localtime($initialTime);
+    } elsif($directive eq "tomorrow-local-time"){
+        $initialTime += 86400;
+        ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) = localtime($initialTime);
+    } elsif($directive eq "today-universal-time"){
+        ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) = gmtime($initialTime);
+#        print gmtime($initialTime) . "\n";
+    } elsif($directive eq "yesterday-universal-time"){
+        $initialTime -= 86400;
+        ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) = gmtime($initialTime);
+    } elsif($directive eq "tomorrow-universal-time"){
+        $initialTime += 86400;
+        ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) = gmtime($initialTime);
+    } else {
+        print "invalid time directive: $directive. Execution halted\n";
+        exit;
+    }
+    $yy = $D_year + 1900;
+    $mm = $D_mon + 1;
+    $dd = $D_mday;
+
+    push @lodates, sprintf("%04d-%02d-%02d", $yy, $mm, $D_mday);
+    return @lodates;
+}
+
+ 
+# returns a timestamp for the current date (GMT) at midnight and the
+# current number of seconds since that moment
+sub getUTCat00(){
+    my $initialTime = time; # time in unix time-stamp
+    my @lodates;
+    my ($yy, $mm, $dd);
+    my
+    ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) = localtime($initialTime);
+
+    my $midnight = sprintf("%04d-%02d-%02dT00:00:00", $D_year+1900, $D_mon+1,
+$D_mday);
+
+    my $utc0000 =  str2time($midnight);
+    print "currentTime: $initialTime\n";
+    print "midnight: $midnight $utc0000\n";
+    my $nsec = int($initialTime - $utc0000);
+
+    return $utc0000, $nsec;
+}
 
 1;

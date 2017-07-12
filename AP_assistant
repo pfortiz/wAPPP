@@ -56,6 +56,8 @@ foreach $_ (sort keys %apDict){
     $$_ = $apDict{$_};
 }
 
+$site = $apDict{"site"};
+
 $navail = &getNavailableProcesses(%apDict);
 print "Number of available processes: $navail\n";
 
@@ -297,6 +299,11 @@ if($inFile eq "-create-bb-sample"){
                         }
                     }
                     $fftcontent{$task} .= $_;
+                } elsif(/ignore.begin/){
+                    while(<Q>){
+                        if(/ignore.end/){ last; }
+#                        $fftcontent{$task} .= $_;
+                    }
                 } elsif(/parallel.begin/){
                     $fftcontent{$task} .= $_;
                     $inFile = "pipelines/$task/parallel.rpl";
@@ -497,6 +504,14 @@ print FF "# is provided as a file. See examples or documentation.\n";
                 if($dtype{$taty} eq ""){ $taty = "ud" };
                 print FF "$tn.type=$taty\n";
                 $ff_taty = "bb$taty";
+                if($site eq "nonParallel"){
+#                    print "NON-PARALLEL situation\n";
+                    $tagLocal = "ignore";
+                    $tagParallel = "local";
+                } else {
+                    $tagLocal = "local";
+                    $tagParallel = "parallel";
+                }
 
                 # this way we insure that if we introduce new types, code
                 # needs to be present for them
@@ -662,6 +677,10 @@ INSTRUCTIONS
                     close(P);
                 } else {
                     print "WARNING: processor not found\n$tpr\n";
+                    $file = "$dire/PROCESSOR";
+                    open(P,">$file");
+                    print P "/dev/no-such-processor\n";
+                    close(P);
                 }
             }
             if($tty eq "dlftp" or $tty eq "ulftp"){
@@ -749,8 +768,7 @@ ${explain}#eg:
 dlftp-getDataFromSiteX:
 dlftp-getDataFromSiteY:
 spwn-processData: dlftp-getDataFromSiteX dlftp-getDataFromSiteY
-spwn-applyModels: proc-processData
-
+spwn-applyModels: spwn-processData
 HEADER
     foreach $t (keys %ap_predef::pdtx){
         print BB "#\t$t : $pdtx{$t}\n";
@@ -1684,6 +1702,8 @@ SAMPLE_FILE
     close(S);
 }
 
+# when we are in non-parallel sites we want to switch the parallel/local
+# tags so that they can be ignored later on...
 
 sub bbproc(){    
     print "historyPath.proc = $historyPath\n";
@@ -1704,14 +1724,14 @@ DAILY_PATH = HISTORY_DIR/YYY/SMM/SDD
 # you can edit lines above this one
 $tn.parameters.end
 
-$tn.local.begin
+$tn.$tagLocal.begin
 # you can edit lines below this one
 echo about to submit the processing pipeline to the grid
 qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
 # you can edit lines above this one
-$tn.local.end
+$tn.$tagLocal.end
 
-$tn.parallel.begin
+$tn.$tagParallel.begin
 # you can edit lines below this one
 echo  Preparing for task TASK_ID
 
@@ -1737,8 +1757,9 @@ else
 endif
 
 # you can edit lines above this one
-$tn.parallel.end
+$tn.$tagParallel.end
 FF_FILE
+
 }
 
 sub bbud(){
@@ -1749,15 +1770,15 @@ $tn.parameters.begin
 # you can edit lines above this one
 $tn.parameters.end
 
-$tn.local.begin
+$tn.$tagLocal.begin
 # you can edit lines below this one
 echo about to submit the processing pipeline to the grid
 qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
-$tn.local.end
+$tn.$tagLocal.end
 
-$tn.parallel.begin
+$tn.$tagParallel.begin
 # you can edit lines below this one
-$tn.parallel.end
+$tn.$tagParallel.end
 FF_FILE
 }
 
@@ -1787,17 +1808,17 @@ DATA_TRACER = ($tn.tracer_file)
 # you can edit lines above this one
 $tn.parameters.end
 
-$tn.local.begin
+$tn.$tagLocal.begin
 assignto hasData command GET_PATH_CONTENT path=($tn.data_path) fp=($tn.file_pattern) dt=($tn.tracer_file) -count
 if hasData gt 0 then
     sexec touch DONE_TRACER
 else
     sexec touch FAIL_TRACER
 endif
-$tn.local.end
+$tn.$tagLocal.end
 
-$tn.parallel.begin
-$tn.parallel.end
+$tn.$tagParallel.begin
+$tn.$tagParallel.end
 
 FF_FILE
 }
@@ -1834,7 +1855,7 @@ $tn.parameters.begin
 # you can edit lines above this one
 $tn.parameters.end
 
-$tn.local.begin
+$tn.$tagLocal.begin
 echo about to start rsync from the main nodes
 #TO BE FIXED...
 if ($tn.dest_path) missing then
@@ -1843,11 +1864,11 @@ endif
 sexec X_WRAPPER "rsync ($tn.rsync_flags) --include ($tn.pattern) ($tn.source_path) ($tn.dest_path)" DONE_TRACER &
 # uncomment the next line if you can run rsync from the nodes
 # qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave
-$tn.local.end
+$tn.$tagLocal.end
 
-$tn.parallel.begin
+$tn.$tagParallel.begin
 #sexec X_WRAPPER "rsync $rsync_flags --include $pattern $source_path $dest_path" DONE_TRACER &
-$tn.parallel.end
+$tn.$tagParallel.end
 
 FF_FILE
 }
@@ -1871,14 +1892,14 @@ DAILY_PATH = HISTORY_DIR/YYY/SMM/SDD
 # you can edit lines above this one
 $tn.parameters.end
 
-$tn.locale.begin
+$tn.$tagLocal.begin
 # you can edit lines below this one
 echo about to submit the processing pipeline to the grid
 qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
 # you can edit lines above this one
-$tn.locale.end
+$tn.$tagLocal.end
 
-$tn.local.begin
+$tn.$tagParallel.begin
 # you can edit lines below this one
 echo  Preparing for task TASK_ID
 
@@ -1904,7 +1925,7 @@ else
 endif
 
 # you can edit lines above this one
-$tn.local.end
+$tn.$tagParallel.end
 FF_FILE
 }
 
@@ -1929,17 +1950,17 @@ LOG_FILE = DAILY_PATH/verify_PRODUCT_CODE_YYY_SMM_SDD.log
 # you can edit lines above this one
 $tn.parameters.end
 
-$tn.local.begin
+$tn.$tagLocal.begin
 qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
-$tn.local.end
+$tn.$tagLocal.end
 
-$tn.parallel.begin
+$tn.$tagParallel.begin
 # Make sure the history directory for the day is created. PFO. 2017-06-18
 mkdir DAILY_PATH
 
 sexec MONTY VERIFIER PATH_TO_PRODUCT/YYY/SMM/SDD/PRODUCT_CODE  > LOG_FILE
 sexec touch DONE_TRACER
-$tn.parallel.end
+$tn.$tagParallel.end
 
 FF_FILE
 }
@@ -1969,19 +1990,19 @@ $tn.parameters.begin
 # you can edit lines above this one
 $tn.parameters.end
 
-$tn.local.begin
+$tn.$tagLocal.begin
 echo about to submit the processing pipeline to the grid
 qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
-$tn.local.end
+$tn.$tagLocal.end
 
-$tn.parallel.begin
+$tn.$tagParallel.begin
 assignto ftpResult command MONTY DOWNLOADER FTP_CONFIG ($tn.remote_path) ($tn.local_path) ($tn.pattern)
 if ftpResult eq Successful-ftp then
     sexec touch DONE_TRACER
 else
     sexec touch FAIL_TRACER
 endif
-$tn.parallel.end
+$tn.$tagParallel.end
 FF_FILE
 }
 
@@ -2010,12 +2031,12 @@ $tn.parameters.begin
 # you can edit lines above this one
 $tn.parameters.end
 
-$tn.local.begin
+$tn.$tagLocal.begin
 echo about to submit the processing pipeline to the grid
 qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
-$tn.local.end
+$tn.$tagLocal.end
 
-$tn.parallel.begin
+$tn.$tagParallel.begin
 assignto ftpResult command MONTY UPLOADER FTP_CONFIG ($tn.local_path) ($tn.remote_path) ($tn.pattern)
 if ftpResult eq Successful-ftp then
     sexec touch DONE_TRACER
@@ -2023,7 +2044,7 @@ else
     sexec touch FAIL_TRACER
 endif
 
-$tn.parallel.end
+$tn.$tagParallel.end
 FF_FILE
 }
 

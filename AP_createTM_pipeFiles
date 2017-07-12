@@ -20,6 +20,36 @@
 
 #use strict; # I need black magic
 #use String::Scanf
+
+# PFO: July 12, 2017
+#   This script needs to be aware of its envrironment, ie, it needs to know
+#   whether it is running or not in a parallel system. In that case, no
+#   *.specific pipeline shall be created.
+
+my $packagePath;
+
+BEGIN{
+    my @parts = split(/\//, $0);
+    pop @parts;
+    my $myPath = join("/", @parts);
+    if($myPath eq "."){
+        $myPath = `pwd`;
+        chop($myPath);
+    }
+    $packagePath = $myPath;
+}
+
+print "path: $packagePath\n";
+use lib "$packagePath";
+
+my %apDict = &getFromRc();
+
+foreach $_ (sort keys %apDict){
+    $$_ = $apDict{$_};
+}
+
+$site = $apDict{"site"};
+
 (my $sec,my $min,my $hour,my $mday,my $mon,my $yyyy,my $wday,my $yday,my
 $isdst) = localtime();
 my $year = 2042;
@@ -188,10 +218,14 @@ foreach $_ (@tparams){
 }
 
 
-if($path=~/spwn/){
-    print FT "$PROCESSOR\n";
-} else {
+#if($path=~/spwn/){
+#    print FT "$PROCESSOR\n";
+#}
+
+if($site ne "nonParallel"){
     print FT "thisPipe = TASK_PATH/$pName.specific\n";
+} elsif($PROCESSOR ne ""){
+    print FT "$PROCESSOR\n";
 }
 
 #thisPipe = TASK_PATH/$pName.specific
@@ -222,10 +256,12 @@ close(FTT);
 
 close(FT);
 
-# we should evaluage whether ".specific" is necessary in the cases the main
+# we should evaluate whether ".specific" is necessary in the cases the main
 # task does not invoke qsub
+# We do know that the local/parallel content has been flipped in all tasks
+# when we are in any non-Parallel system.
 
-if($path=~/spwn/){
+if($site eq "nonParallel"){
     exit;
 }
 

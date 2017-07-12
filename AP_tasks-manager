@@ -113,6 +113,26 @@
 # - As far as I can tell, this feature was never implemented, but it is
 #   time to do it
 
+# Solution: July 12, 2017
+#
+# The situation was solved by expanding the tasks list in a two step
+# procedure before running the old code. 
+# Tasks with extra dimensions were expanded into new tasks while the
+# original files are left untouched and changes can be applied to them
+# without affecting the performance of the tasks-manager
+#
+# For each of the expanded tasks, the identity of the original task is kept
+# in case it needs to be refered during the script invoking stage.
+#
+#   Another issue to be dealt with is to give the tasks-manager the ability
+#   to be launched without specifying a fixed date, but asking it to
+#   determine the data if the date field is expressed as:
+#   today-local-time or
+#   today-universal-time
+#
+#   This latest feature is useful when the tasks-manager is invoked in
+#   quasi-real time mode for data acquisition/processing purposes.
+
 
 
 
@@ -135,36 +155,6 @@ BEGIN{
     my $myPath = join("/", @parts);
     $packagePath = $myPath;
 }
-
-
-#BEGIN{
-#    sub getFromRc(){
-#        my $file = @_[0];
-#        my %rcDict;
-#        open(F, "<$file");
-#        while(<F>){
-#            if(/^#/ or /^$/){ next; }
-#            chop;
-#            if(/=/){
-#                ($key, $value) = split(/=/,$_,2);
-#                $rcDict{$key} = "$value";
-#            }
-#        }
-#        close(F);
-#        return %rcDict;
-#    }
-#    
-#    my $home = $ENV{HOME};
-#    my $rcfile = "$home/.automatedProcessing";
-#    if(!-e $rcfile){
-#        die "Please run AP_assistant at least once.\n";
-#    }
-#    $packagePath = $apDict{"appath"};
-#}
-
-
-#use timex qw(&dateToDoy &isLeap &daysInMonth &daysInYear &listOfDates
-#&datesBetween &segmentedDates);
 
 use lib "$packagePath";
 use ap_timex;
@@ -199,7 +189,23 @@ if($#ARGV ==  0 and $farg eq "-init"){
 #    print "Usage:  $me -createStubs\n";
 #
 #   Note that extraDim as defined in the command line affects all tasks.
-    die "Usage:  $me tasks-to-run-file date-definitions [extraDim=filename] [-dummyRun]\n\n";
+    print <<"USAGE";
+Usage:  $me tasks-to-run-file date-definitions [extraDim=filename] [-dummyRun]
+
+date-definitions take the form: YYYY-MM-DD[:YYYY-MM-DD] or other forms of
+date ranges. Use "test_dateString" to explore all possibilities
+
+date-definitions can also be:
+
+today-local-time
+yesterday-local-time
+tomorrow-local-time
+
+today-universal-time
+yesterday-universal-time
+tomorrow-universal-time
+USAGE
+    exit;
 }
 
 $killMe = "./kill_$me";
@@ -286,7 +292,15 @@ $date = $datesToProcess;
 # timex getListOfDates() routine, which can handle a number of other things.
 # The results for daily resolution should be exactly the same
 
-@LISTOFDATES = &getListOfDates($datesToProcess);
+if(/time/){
+    @LISTOFDATES = &getSpecialDates($datesToProcess);
+    ($utcAt0000, $nSecsFromMidnight) = &getUTCat00();
+    $uTracer = "${nSecsFromMidnight}_$$";
+} else {
+    @LISTOFDATES = &getListOfDates($datesToProcess);
+    $uTracer = "";
+}
+print "Day-timestamp: $Utracer\n";
 
 
 $ts = &timestamp();
@@ -362,15 +376,6 @@ $initialTime = time;
 my ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) =
                                                     localtime($initialTime);
 
-$midnight = sprintf("%02d/%02d/%04d 00:00:00", $D_mday, $D_mon+1, $D_year+1900);
-
-$utc0000 =  str2time($midnight);
-$nsec = int($time - $utc0000);
-
-# I don't think this unique tracer needs to be generated again.
-$uniqueTracer = "${nsec}_$$";
-
-
 # we should trace that we are starting the processing of this task
 $host = `hostname`;
 chop ($host);
@@ -380,6 +385,9 @@ $ltime = localtime;
 # This is the generic extraction of each of the tasks listed in the
 # tasks-to-run file
 
+# these definitions as a function of $defs make little sense as the defs
+# dictionary has not been initialised yet, they should go after we read the
+# .tm file
 $topDir = $defs{"processingDir"};
 if($topDir eq ""){
     $topDir = $basePath;
@@ -689,7 +697,9 @@ foreach $dateToProcess (@LISTOFDATES){
 print STDERR "topdirectory is $topDir\n";
 
 print "Xdim: |@xDim|\n";
-exit;
+
+
+# exit;
 
 # the idea here is that all .o and .e files for this particular processing
 # get deposited in one site for a number of reasons.
@@ -736,87 +746,6 @@ while(){
         %logsById = %{$pointers[3]};
     }
 
-#    if($dummyRun == 0){
-#        open(Q, "$qquery | ");
-#        $nJobsRunning = 0;
-#        undef @errorFiles;
-#        undef %errorsById;
-#        undef %logsById;
-#        if($site eq "UOL"){
-#            $_ = <Q>;       # dummy line
-#            $_ = <Q>;       # dummy line
-#            while(<Q>){
-#                chop;
-#                @jobs = split();
-#                $jid = shift(@jobs);
-#                $status = $jobs[3];
-#    #            if($status ne "C"){
-#    #            }
-#                $runningJobs{$jid} = 1;
-#                $nJobsRunning++;
-#                print "QRJ: $jid\n";
-#            } 
-#            # how do I distinguish an error in the queue system from a real
-#            # situation when no jobs are running??
-#            # we are at $dotOdotE   Which files are there?
-#            open(E, "ls  | ");
-#            while(<E>){
-#                chop;
-#                if(/\.e/){
-#                    push @errorFiles, $_;
-#                    @lepath = split(/\.e/);
-#                    $eid = $lepath[1];
-#                    $errorsById{$eid} = $_;
-#    
-#    #                print "Error file: $_\n";
-#                } elsif (/\.o/){
-#                    @lepath = split(/\.o/);
-#                    $oid = $lepath[1];
-#                    $logsById{$oid} = $_;
-#                }
-#            }
-#            close(E);
-#            
-#        } elsif($site eq "CEMS"){
-#            # this needs fixing...
-#            $_ = <Q>;       # dummy line
-#            $_ = <Q>;       # dummy line
-#            while(<Q>){
-#                chop;
-#                @jobs = split();
-#                $jid = shift(@jobs);
-#                $status = $jobs[3];
-#    #            if($status ne "C"){
-#    #            }
-#                $runningJobs{$jid} = 1;
-#                $nJobsRunning++;
-#                print "QRJ: $jid\n";
-#            } 
-#            # how do I distinguish an error in the queue system from a real
-#            # situation when no jobs are running??
-#            # we are at $dotOdotE   Which files are there?
-#            open(E, "ls  | ");
-#            while(<E>){
-#                chop;
-#                if(/\.e/){
-#                    push @errorFiles, $_;
-#                    @lepath = split(/\.err/);
-#                    $eid = $lepath[0];
-#                    $errorsById{$eid} = $_;
-#    
-#    #                print "Error file: $_\n";
-#                } elsif (/\.l/){
-#                    @lepath = split(/\.log/);
-#                    $oid = $lepath[0];
-#                    $logsById{$oid} = $_;
-#                }
-#            }
-#            close(E);
-#            
-#        } elsif($site eq "CTCP"){
-#        }
-#        close(Q);
-#    }
 
 
     $currentTime = time;
@@ -837,13 +766,17 @@ while(){
 
     $totalPendingTasks = 0;
 #   Not anymore. Tasks were expanded into extra dimensions in a previous step.
-
 #    foreach $xd (@xDim){
+
     foreach $dateToProcess (@LISTOFDATES){
         if($nPending{$dateToProcess} == 0){
 #            print STDERR "$dateToProcess tasks completed.\n";
             next;     # do nothing, there are no pending tasks for this
                       # particular day
+        }
+        if($site eq "nonParallel"){
+            $nPLeft = &getNavailableProcesses();
+            print "Number of spare processes left: $nPLeft\n";
         }
         print STDERR "Dealing with $dateToProcess|n";
 
@@ -908,14 +841,14 @@ while(){
             shift(@tparts);
             $spDims = join("", @tparts);
             $addec = join(" ", @tparts);
-            $taskDone = "$dailyDir/$t.Done";
-            $taskRunning = "$dailyDir/$t.Running";
-            $taskFailed = "$dailyDir/$t.Failed";
+            $taskDone = "$dailyDir/$t$uTracer.Done";
+            $taskRunning = "$dailyDir/$t$uTracer.Running";
+            $taskFailed = "$dailyDir/$t$uTracer.Failed";
 
             $ttracers = "DONE_TRACER=$taskDone ";
             $ttracers .= "FAIL_TRACER=$taskFailed ";
             $ttracers .= "RNNG_TRACER=$taskRunning";
-            $dask = "$t$dateToProcess";
+            $dask = "$t$dateToProcess$uTracer";
             $tjid = $queueJob{$dask};
 #            print STDERR "Dask: $dask\n";
 
@@ -1189,7 +1122,13 @@ while(){
                 }
 
 #                $runId = sprintf("-runid=r%03d", $nexec{$dask}+ 1);
-                $runId = "-runid=$spDims";
+                if($spDims eq ""){
+                    $runId = "-runid=r0";
+                } else {
+                    $aaa = $spDims;
+                    $aaa =~ s/=/~/g;
+                    $runId = "-runid=$aaa";
+                }
                 $effWT = $twt{$dask};
                 $effMM = $mxm{$dask};
 
@@ -1205,7 +1144,7 @@ while(){
 
                 $suffix = "-exec -walltime=$effWT $ttracers -maxmem=$effMM -slave $runId";
                 $commando = "@cparts $dailyPl $laDate $addec $suffix";
-                print "Emma this one: $commando\n"; 
+#                print "Emma this one: $commando\n"; 
 #                print "dailyPl  = $dailyPl\n";
 #                print "COMMANDO4  = ", $commando, "\n";
 #                print "$taskStatus $t \@ $timo | $commando | $tusk\n";

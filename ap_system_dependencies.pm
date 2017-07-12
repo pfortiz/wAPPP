@@ -744,3 +744,4 @@ sub pipeStats(){
     print "Number of other errors $nOtherErrors\n";
 }
 
+1;
