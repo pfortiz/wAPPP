@@ -212,13 +212,37 @@ if($inFile eq "-create-bb-sample"){
                 $tn = pop(@path);
                 print "External task $_ -> $tn\n";
             }
+            if(!&validateTask($tn)){
+                print "Task $tn uses unsupported prefix. Please fix and try again\n";
+                exit;
+            }
             $bbTasks{$tn} = $line;
             $unusedBbTask{$tn} = 1;
             if($parts[0] eq ":"){ shift(@parts); }
             $bbDependencies{$tn} = "@parts";
+            $definedTask{$tn} = 1;
             push @theBBtasks, $tn;
         }
         close(BB);
+        #double check that the dependencies are indeed existing tasks
+        $error = 0;
+        foreach $_ (keys %bbDependencies){
+            @parts = split(" ", $bbDependencies{$_});
+            foreach $pp (@parts){
+                if($definedTask{$pp} eq ""){
+                    print "\n$_ depends on undefined task $pp\n";
+                    if(!&validateTask($pp)){
+                        print "\t+ dependency-task $pp has incorrect prefix\n";
+                    }
+                    print "ERROR: fix before proceeding\n";
+                    $error = 1;
+                }
+            }
+        }
+        if($error == 1){
+            print "\nHalting execution so you can fix the errors\n";
+            exit;
+        }
         $outFile = $inFile;
         $outFile =~ s/\.bb/.ff/;
 
@@ -564,6 +588,59 @@ INSTRUCTIONS
 
         undef @lot;
         undef %ffdict;
+        undef %definedTasks;
+        # do a sanity check on task names before carrying on
+        $errors = 0;
+        print "\nValidating task names and dependencies\n";
+        foreach $_ (@fflines){
+            if(/^#/) { next; }
+            if(/=/){  # assume a key/value pair
+                ($key, $value) = split(/=/,$_,2);
+                # trim leading and trailing spaces
+                $key =~ s/^\s*//;
+                $key =~ s/\s*$//;
+                $value =~ s/^\s*//;
+                $value =~ s/\s*$//;
+                $ffdict{$key} = $value;
+                if($key eq "task"){
+#                    print "Task: $value\n";
+                    if(!&validateTask($value) ){
+                        print "ERROR: $value has invalid prefix.\n";
+                        $errors = 1;
+                    }
+                    $definedTasks{$value} = 1;
+                    $laTask = $value;
+                    push @lot, $value;
+                }
+                if(/\.dependencies/){ 
+                    if($value ne ""){
+                        $dependsOn{$laTask} = $value;
+#                        print "Task $laTask depends on: $value\n";
+                    }
+                }
+#                print "$key : $value\n";
+            }
+        }
+        foreach $tsk (@lot){
+            if($dependsOn{$tsk} ne ""){
+                @dtasks = split(" ", $dependsOn{$tsk});
+                foreach $dep (@dtasks){
+                    if($definedTasks{$dep} == 0){
+                        print "ERROR $tsk: Unknown dependency $dep\n";
+                        $errors = 1;
+                    }
+                    if(!&validateTask($dep) ){
+                        print "ERROR $tsk: incorrect prefix for dependency $dep\n\n";
+                        $errors = 1;
+                    }
+                }
+            }
+        }
+        if($errors == 1){
+            print "ERRORS FOUND. Fix tasks names/dependency-names before proceeding\n";
+            exit;
+        }
+exit;
         foreach $_ (@fflines){
             if(/^#/) { next; }
             if(/=/){  # assume a key/value pair

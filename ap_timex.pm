@@ -41,15 +41,18 @@ our @EXPORT = qw(isLeap equivDateDoy dateToDoy listOfDates daysInMonth daysInYea
 # when UNIT is year or month or day, the interval is ignored
 #
 sub getListOfDates(){
-    my $_ = @_[0];
+    my $lod = shift;
+    my $_;
+#    my $_ = @_[0];
     my ($interval, $date, $unit, $theDateString, $unit);
-    if(!/\/dt=/){
+    my @parts = split(/\//, $lod);
+    if(!$lod =~ /\/dt=/){
         $interval = "dt=1day";
-        $theDateString = $_;
+        $theDateString = $lod;
     } else {
-        $date = $_;
-#        print "Splitting: $_\n";
-        ($theDateString, $interval) = split(/\//);
+        $date = $lod;
+#        print "Splitting: $lod\n";
+        ($theDateString, $interval) = split(/\//, $lod);
     }
     $interval =~ s/dt=//;
     $_ = lc($interval);

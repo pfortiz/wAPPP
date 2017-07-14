@@ -8,7 +8,7 @@ my %pdtx; # pdtexplanation;
 my %pdtf; # pdtNumericFlag;
 my @pdtp; # pdtPrefixes
 
-@pdtp = qw(dlftp proc dqc dxst ulftp rsync ud);
+@pdtp = qw(dlftp proc dqc dxst ulftp rsync ud spwn);
 
 $pdtx{"dlftp"} = "a task dealing with ftp data acquisition";
 $pdtx{"proc"} = "a task dealing with data processing";
@@ -36,8 +36,18 @@ use Exporter qw(import);
  
 our @EXPORT_OK = qw(pexp cexp getAPflags getAPtypes);
 
-our @EXPORT = qw(pexp cexp getAPflags getAPtypes);
- 
+our @EXPORT = qw(pexp cexp getAPflags getAPtypes validateTask);
+
+#check whether the task suffix is correct
+sub validateTask(){
+    my $task = shift;
+    my ($prefix, $tname) = split(/-/, $task);
+    if($pdtx{$prefix} eq ""){
+        return 0;
+    } else {
+        return 1;
+    }
+}
  
 sub pexp(){
     my $explain = "";

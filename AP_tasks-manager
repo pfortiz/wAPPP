@@ -159,6 +159,7 @@ BEGIN{
 use lib "$packagePath";
 use ap_timex;
 use ap_system_dependencies;
+use ap_predef;
 
 %apDict = &getFromRc($rcfile);
 
@@ -171,7 +172,7 @@ my @parts = split(/\//, $0);
 my $me = pop(@parts);
 my $farg = @ARGV[0];
 my $ppath = join('/', @parts);
-print "I am $0\n";
+print "I am $0 (a.k.a. $me)\n";
 print "I live in $ppath\n";
 
 $fullRunPipeline = sprintf("%s/AP_runPipeline", $packagePath);
@@ -424,6 +425,12 @@ while(<P>){
         $tname = $parts[0];
         $xdfile = $parts[5];
         $tname =~ s/://;
+        # this should be handled by the assistant for automatically created
+        # files
+        if(!&validateTask($tname)){
+            print "ERROR: task $tname has invalid prefix. Fix before continuing\n";
+            exit;
+        }
         if($init == 1){
             $pldir = "$topDir/pipelines/$tname";
             if(!-e $pldir){
@@ -505,6 +512,7 @@ for($l = 0; $l < $nLines; $l++){
 #    print "task: $_\n";
     $tsk = $parts[0];
     $tsk =~ s/://;
+    $taskDefined{$tsk} = 1;
     @xp = split("~",$tsk);
     $toMatch = pop (@xp);
     $xdp = join("~", @xp);
@@ -514,6 +522,10 @@ for($l = 0; $l < $nLines; $l++){
     $nParts = $#parts + 1;
     for($i = 7; $i < $nParts; $i++){
         $pp = $parts[$i];
+        $valid = &validateTask($pp);
+        if(!$valid){
+            print "WARNING dependency task $pp has invalid prefix\n";
+        }
         $itsXdm =  $hasXdim{$pp};
 #        print "Task $tsk depends on $pp . Xdim=|$itsXdm|$xdm|\n";
         if(($itsXdm eq $xdm) and ($xdm ne "")){
@@ -531,6 +543,10 @@ for($l = 0; $l < $nLines; $l++){
             $parts[$i] = "@things";
         } else {
 #            print "PP = $pp | $itsXdm | $ttx{$pp}\n";
+            if($ttx{$pp} eq ""){
+                print "\nWARMING: $tsk depends on non-existing task $pp\n";
+                print "WARMING: $tsk dependency on $pp ignored.\n\n";
+            }
             $parts[$i] = $ttx{ $pp };
         }
     }
@@ -605,6 +621,7 @@ foreach $_ (@tmLines){
 #    print "Task $task... max# $atMost{$task} nRun $nActiveTasks{$task}\n";
     
     $command{$task} = $piper;
+    print "SANITY: $task depends on @parts\n";
     if($#parts < 0){
         $dependencies{$task} = "";
         push @independentTasks, $task;
@@ -613,12 +630,17 @@ foreach $_ (@tmLines){
         $dependencies{$task} = "@parts";
         foreach $td (@parts){
             $tasksDependingOnMe{$td} .= "$task ";
+            if($taskDefined{$td} != 1){
+                print "WARNING: $task depends on nonexisting task $td\n";
+            }
         }
         push @dependentTasks, $task;
     }
     push @tasks, $task;
 
 }
+
+#sanity check. Are all dependencies already existing tasks?
 
 #exit;
 
@@ -929,6 +951,7 @@ while(){
             }
 
             $commando = $command{$t};
+            print "SCK: $t depends on $dependencies{$t}\n";
             if($dependencies{$t} ne ""){
                 $_ = $dependencies{$t};
                 @lod = split;
@@ -953,7 +976,7 @@ while(){
         
             if($nMissing > 0){
                 print "Dependencies not completed yet\n";
-                # We can not proceed on this task, not all its dependencies
+                # We can not proceed with this task, not all its dependencies
                 # have finished... Next!!
                 next; 
             }
@@ -977,6 +1000,7 @@ while(){
             if($nexec{$dask} eq ""){
                 $nexec{$dask} = 0;
             }
+
 #            if($ntimes == 0){
 #                $effWT = $twt{$dask};
 #                $effMM = $mxm{$dask};
@@ -1244,10 +1268,13 @@ exit;
 
 sub iDepend(){
     my ($d, $lodep) = @_;
-    my $_ = $lodep;
-    my @parts = split;
+#    my $_ = $lodep;
+#    my @parts = split;
+    my @parts2 = split(" ", $lodep);
+#    print "Parts: @parts\n";
+#    print "Parts2: @parts2\n";
 #    print "$d : $lodep\n";
-    foreach $p (@parts){
+    foreach $p (@parts2){
         push @iDependOn, $p;
         &iDepend($p, $dependencies{$p});
     }
