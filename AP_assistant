@@ -626,8 +626,8 @@ INSTRUCTIONS
                 @dtasks = split(" ", $dependsOn{$tsk});
                 foreach $dep (@dtasks){
                     if($definedTasks{$dep} == 0){
-                        print "ERROR $tsk: Unknown dependency $dep\n";
-                        $errors = 1;
+                        print "WARNING $tsk: Ignoring unknown dependency $dep\n";
+#                        $errors = 1;
                     }
                     if(!&validateTask($dep) ){
                         print "ERROR $tsk: incorrect prefix for dependency $dep\n\n";
@@ -637,7 +637,7 @@ INSTRUCTIONS
             }
         }
         if($errors == 1){
-            print "ERRORS FOUND. Fix tasks names/dependency-names before proceeding\n";
+            print "ERRORS FOUND. Fix task names/dependency-names before proceeding\n";
             exit;
         }
 exit;

@@ -505,6 +505,7 @@ foreach $_ (@taskLines){
 #foreach $_ (@tmLines){
 
 $nLines = $#tmLines + 1;
+$hasFailed = "";
 for($l = 0; $l < $nLines; $l++){
     $_ = $tmLines[$l];
 #    print "\nTML: $_\n";
@@ -524,7 +525,7 @@ for($l = 0; $l < $nLines; $l++){
         $pp = $parts[$i];
         $valid = &validateTask($pp);
         if(!$valid){
-            print "WARNING dependency task $pp has invalid prefix\n";
+            $hasFailed .=  "WARNING dependency task $pp has invalid prefix\n";
         }
         $itsXdm =  $hasXdim{$pp};
 #        print "Task $tsk depends on $pp . Xdim=|$itsXdm|$xdm|\n";
@@ -544,8 +545,8 @@ for($l = 0; $l < $nLines; $l++){
         } else {
 #            print "PP = $pp | $itsXdm | $ttx{$pp}\n";
             if($ttx{$pp} eq ""){
-                print "\nWARMING: $tsk depends on non-existing task $pp\n";
-                print "WARMING: $tsk dependency on $pp ignored.\n\n";
+                $hasFailed .= "\nWARNING: $tsk depends on non-existing task $pp\n";
+                $hasFailed .= "WARNING: $tsk dependency on $pp ignored.\n\n";
             }
             $parts[$i] = $ttx{ $pp };
         }
@@ -621,7 +622,7 @@ foreach $_ (@tmLines){
 #    print "Task $task... max# $atMost{$task} nRun $nActiveTasks{$task}\n";
     
     $command{$task} = $piper;
-    print "SANITY: $task depends on @parts\n";
+#    print "SANITY: $task depends on @parts\n";
     if($#parts < 0){
         $dependencies{$task} = "";
         push @independentTasks, $task;
@@ -631,13 +632,18 @@ foreach $_ (@tmLines){
         foreach $td (@parts){
             $tasksDependingOnMe{$td} .= "$task ";
             if($taskDefined{$td} != 1){
-                print "WARNING: $task depends on nonexisting task $td\n";
+                $hasFailed .= "WARNING: $task depends on nonexisting task $td\n";
             }
         }
         push @dependentTasks, $task;
     }
     push @tasks, $task;
 
+}
+if($hasFailed ne "" ){
+    print "$hasFailed\n";
+    print "Please fix warnings/errors in $farg and try again\n"; 
+    exit;
 }
 
 #sanity check. Are all dependencies already existing tasks?
@@ -760,7 +766,7 @@ while(){
     # aim:
     # %runningJobs = &getRunningJobs();
     if($dummyRun == 0){
-        @pointers = &getRunningJobs(%apDict);
+        @pointers = &getRunningJobIds(%apDict);
 
         %runningJobs = %{$pointers[0]};
         %errorFiles = @{$pointers[1]};

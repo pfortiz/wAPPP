@@ -212,6 +212,8 @@ There is also a piece of software which invokes the same subroutine used by AP_t
 Note that both <b>AP_processing-daemon</b> and <b>AP_tasks-manager</b> use
 the same input file.<p>
 
+Note as well that <b>AP_tasks-manager</b> can be launched using standard
+Unix tools like <b>crontab</b>
 </dd>
 
 <dt><b>AP_runPipeline</b></dt>
@@ -457,6 +459,12 @@ The following is a list of valid notations:
 May and June of the years 2002 to 2007</td></tr>
 <tr><td>2,5,6@2002:2007/dt=1month</td><td>Lists all months of February,
 May and June of the years 2002 to 2007</td></tr>
+<tr><td>today-local-time</td><td>Inserts the current date in local (zone) time.</td></tr>
+<tr><td>today-universal-time</td><td>Inserts the current date in universal time (GMT).</td></tr>
+<tr><td>yesterday-local-time</td><td>Inserts yesterday's date in local (zone) time.</td></tr>
+<tr><td>yesterday-universal-time</td><td>Inserts yesterday's date in universal time (GMT).</td></tr>
+<tr><td>tomorrow-local-time</td><td>Inserts tomorrow's date in local (zone) time.</td></tr>
+<tr><td>tomorrow-universal-time</td><td>Inserts tomorrow's date in universal time (GMT).</td></tr>
 <tr><td></td><td></td></tr>
 </table>
 
@@ -465,6 +473,10 @@ default it is 1 day by using the <b>dt=</b> option<p>
 
 Use <b>test_dateString</b> (part of the wAPPP distribution) to test different
 variations of how to write dates and the results to expect.<p>
+
+The entries with "today", "yesterday", and "tomorrow" allow invoking
+<b>AP_tasks-manager</b> using system automated tools as <b>cron</b>
+avoiding the need to specifically declare the date in the form YYYY-MM-YY.
 
 <h2 name="extraDimensions">Specifying extra dimensions</h2>
 

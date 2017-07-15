@@ -224,7 +224,7 @@ sub getNavailableProcesses(){
 # routine to obtain a listing of jobs in the current queue of a parallel
 # system. Thoughts need to be given on how to treat non-parallel systems.
 
-# syntax: @arrayOfPointers = getRunningJobIds( $dummy, %dict);
+# syntax: @arrayOfPointers = getRunningJobIds(%dict);
 sub getRunningJobIds(){
     my (%dict) = @_;
     my $site = $dict{"site"};
