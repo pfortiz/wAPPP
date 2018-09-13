@@ -68,12 +68,13 @@ sub createRc(){
 
     my ($site, $history, $basePath, $exec_path, $tctl_path, $bundlePath);
     my ($qtag, $pythonx, $qsubmit, $qdelete, $qquery, $err_memory);
-    my ($err_walltime, $machine);
+    my ($err_walltime, $machine, $parallel);
 
     $machine = `uname`;
     chop($machine);
 
     if(($host =~/alice/) or ($host=~/spectre/)){
+        $parallel = 1;
         $site = "UOL";
         $history = "GT_HISTORY";
         $basePath = "/data/atsr";
@@ -88,6 +89,7 @@ sub createRc(){
         $err_memory = "Cannot allocate memory";
         $err_walltime = "job killed: walltime";
     } elsif($host =~/rl.ac.uk/){
+        $parallel = 1;
         $site = "CEMS";
         $history = "GT_HISTORY";
         $basePath = "/group_workspaces/cems/leicester";
@@ -102,6 +104,7 @@ sub createRc(){
         $err_memory = "job killed after reaching LSF memory usage limit.";
         $err_walltime = "job killed after reaching LSF run time limit";
     } elsif($host =~/acri.fr/){
+        $parallel = 1;
         $site = "CTCP";
         $history = "GT_HISTORY";
         $basePath = "/a/trouver";
@@ -118,6 +121,7 @@ sub createRc(){
     } elsif($host =~/iceberg/ or $host =~/sharc/) {
         print "In Iceberg/sharc, University of Sheffield.\n";
         # this should be a path to install as a local installation
+        $parallel = 1;
         $site = "UOS";
         $history = "ICY_HISTORY";
         $basePath = "$home";
@@ -134,6 +138,7 @@ sub createRc(){
     } else {
         print "In non-parallel system.\n";
         # this should be a path to install as a local installation
+        $parallel = 0;
         $site = "nonParallel";
         $history = "AP_HISTORY";
         $basePath = "$home";
@@ -159,8 +164,15 @@ sub createRc(){
 # This one can be UOL, CEMS, UOS, or something else to come
 site=$site
 
+# this is used to indicate whether to run in parallel or not
+
+parallel=$parallel
+
 # The path to where SOFTWARE/SCRIPTS is located
 basePath=$basePath
+
+# The path to where Task-Block file (TB_) are located
+legoPath=$bundlePath
 
 # The full path to where this "package" is located
 appath=$bundlePath

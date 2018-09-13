@@ -39,9 +39,11 @@ BEGIN{
     
     my $home = $ENV{HOME};
     my $rcfile = "$home/.automatedProcessing";
+    print "rcfile: $rcfile\n";
     if(!-e $rcfile){
         die "Please run AP_assistant first even from /tmp\n";
     }
+    print "did die die?\n";
     %apDict = &getFromRc($rcfile);
     $packagePath = $apDict{"appath"};
 }
@@ -292,7 +294,7 @@ DEFINE_a_TASK
         print BB <<"BAREBONES";
 NDAYS=$ndays
 
-# this a ADPW bare-bones project description file.
+# this a wAPPP bare-bones project description file.
 # You should only enter lines of the form
 #
 # taskName: tasks-on which-this-task-depends

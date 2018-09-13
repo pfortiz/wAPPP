@@ -54,12 +54,17 @@ my %apDict = &getFromRc();
 
 foreach $_ (sort keys %apDict){
     $$_ = $apDict{$_};
+    print "AP-DICT: $_ $$_\n";
 }
 
 $site = $apDict{"site"};
 
+$isParallel = $apDict{"parallel"};
+
 $navail = &getNavailableProcesses(%apDict);
 print "Number of available processes: $navail\n";
+
+%legos = &locateTBlegos($legoPath);
 
 @rj = &getRunningJobIds(%apDict);
 
@@ -194,6 +199,7 @@ if($inFile eq "-create-bb-sample"){
     }
     $_ = $inFile;
     if(/\.bb/){
+        $error = 0;
         $project_name = $inFile;
         $project_name =~ s/\.bb//;
         # we work from a bare-bone file
@@ -212,9 +218,10 @@ if($inFile eq "-create-bb-sample"){
                 $tn = pop(@path);
                 print "External task $_ -> $tn\n";
             }
-            if(!&validateTask($tn)){
-                print "Task $tn uses unsupported prefix. Please fix and try again\n";
-                exit;
+            if(!&validateTask($tn, %legos)){
+                print "Task $tn uses unsupported prefix. Please fux and try again\n";
+                $error = 1;
+#                exit;
             }
             $bbTasks{$tn} = $line;
             $unusedBbTask{$tn} = 1;
@@ -225,7 +232,6 @@ if($inFile eq "-create-bb-sample"){
         }
         close(BB);
         #double check that the dependencies are indeed existing tasks
-        $error = 0;
         foreach $_ (keys %bbDependencies){
             @parts = split(" ", $bbDependencies{$_});
             foreach $pp (@parts){
@@ -388,7 +394,7 @@ if($inFile eq "-create-bb-sample"){
 
         foreach $_ (@newBBtasks){
 #        while(<BB>){
-            print "Woking on new task:$_\n";
+            print "Working on new task:$_\n";
 #            chop;
             if(/^#/ or $_ eq "" or !/:/) { next; }
             @parts = split;
@@ -700,6 +706,7 @@ exit;
         $outFile = $inFile;
         $outFile =~ s/\.ff/.tm/;
         $today = localtime;
+        print "About to open: $outFile\n";
         open(TM, ">$outFile");
 
         print TM "maxFails = 10\n\n";
@@ -1840,10 +1847,30 @@ FF_FILE
 }
 
 sub bbud(){
+    my $_ = $tn;
+    $pipeparams = "";
+    $linestorun = "";
+    if(/TB_/){
+        @pp = split(/-/);
+        print "$tn is a lego block\n";
+        $ppath = $legos{$pp[0]};
+        print "path: $ppath\n";
+        open(P, "$ppath -pipeParams|");
+        while(<P>){
+            $pipeparams .= $_;
+        }
+        close(P);
+        open(P, "$ppath -linesToRun|");
+        while(<P>){
+            $linestorun .= $_;
+        }
+        close(P);
+    }
     print FF <<"FF_FILE";
-$tn.atMost=*
+$tn.atMocht=*
 $tn.parameters.begin
 # you can edit lines below this one
+$pipeparams
 # you can edit lines above this one
 $tn.parameters.end
 
@@ -1855,6 +1882,8 @@ $tn.$tagLocal.end
 
 $tn.$tagParallel.begin
 # you can edit lines below this one
+$linestorun
+# you can edit lines above this one
 $tn.$tagParallel.end
 FF_FILE
 }

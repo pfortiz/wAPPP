@@ -13,6 +13,10 @@
 
 <a href="#ap-tools">List of Automated Processing (AP) tools</a> <br>
 
+<a href="#originalLegos">Pre-defined processing blocks</a><br>
+
+<a href="#createLegos">Create your own processing blocks</a> <br>
+
 <a href="#firstWorkflow">How to create a workflow from scratch</a> <br>
 
 <a href="#runPipeline">AP_runPipeline features</a> <br>
@@ -29,7 +33,7 @@
 <br>
 <!-- end index -->
 
-<h2 name="intro">Introduction to <b>wAPPP</b></h2>
+<h2 id="intro">Introduction to <b>wAPPP</b></h2>
 
 The scripts part of  the <b>Workflows for Autonomous Parallel data
 Processing Pipelines</b> (wAPPP).  package  were designed to automate data
@@ -98,7 +102,7 @@ to the same level, the dead time is minimised and whole procedures can
 finish in fraction of the time it took following the previous methods.
 
 
-<h2 name="Proc-package-def">Automated Data Processing Workflows</h2>
+<h2 id="Proc-package-def">Automated Data Processing Workflows</h2>
 
 An <b>wAPPP workflow</b> should be viewed as a set of
 tasks which need to be performed and forms a well defined "package", or projcet.
@@ -159,7 +163,7 @@ correctly.</li>
 that later. </li>
 </ul>
 
-<h2 name="ap-tools">List of Automated Processing (AP) tools</h2>
+<h2 id="ap-tools">List of Automated Processing (AP) tools</h2>
 
 The <b>Automated data processing workflow</b> is a toolkit. There is a core
 of tools designed to perform the most common tasks and to control the
@@ -249,16 +253,16 @@ by a given processor. There is no point in running a processing pipeline if
 vital data are not present.</li>
 
 <li> Of course it is possible for users to define their own pipelines
-(<b>uc-</b>), which may contain a number of verification steps as
+(<b>ud-</b>), which may contain a number of verification steps as
 well </ul>
 
 <pre>Usage:  AP_runPipeline pipe-file date-string [varName=varValue] [-exec] [-slave]</pre><p>
 
-AP_runpipeline has the capacity to submit jobs to the grid engine, and most
+AP_runpipeline has the capacity to submit jobs to a grid engine, and most
 tasks can then be submitted to individual nodes. Some tasks however, need
 to be executed from the login-nodes because of access limitations or
-because they are very short tasks and it makes no sense to submit them as parallel
-jobs, for instance, tasks which verify whether data is present in a
+because they are very short tasks and it makes no sense to submit them as
+parallel jobs; for instance, tasks which verify whether data is present in a
 directory.
 
 As AP_runpipeline is the tool at the core of wAPPP, it is described in
@@ -308,24 +312,6 @@ point. They may become handy as standalone tools as well. I've used some
 constantly.<p>
 
 
-<dt><b>AP_contentRetriever</b></dt>
-<dd>
-
-It examines the content of a directory. It lists the content of a directory
-if only the first argument is given. If a pattern is provided, it lists
-only the filenames where that pattern is present. <p>
-If the name of a file is given (the data tracer) it prints '1' if the file
-exists or '0' otherwise.<p>
-If '-count' is given, instead of a list of files it presents the total
-number of files or the number of files which contain a pattern.<p>
-
-This is one of the tools which can be used standalone. <p>
-
-<pre>Usage:  AP_contentRetriever path=path [fp=pattern dt=data_tracer [-count]]</pre>
-<p>
-
-</dd>
-
 <dt><b>AP_createTM_pipeFiles</b></dt>
 <dd>
 
@@ -343,6 +329,26 @@ added for <b>AP_runPipeline</b> to execute.
 
 walltime is expressed in decimal hours and maxMem is expressed in Megabytes.
 <p>
+</dd>
+
+<h2 id="originalLegos">Pre-defined processing blocks</h2>
+
+<dt><b>AP_contentRetriever</b></dt>
+<dd>
+
+It examines the content of a directory. It lists the content of a directory
+if only the first argument is given. If a pattern is provided, it lists
+only the filenames where that pattern is present. <p>
+If the name of a file is given (the data tracer) it prints '1' if the file
+exists or '0' otherwise.<p>
+If '-count' is given, instead of a list of files it presents the total
+number of files or the number of files which contain a pattern.<p>
+
+This is one of the tools which can be used standalone. <p>
+
+<pre>Usage:  AP_contentRetriever path=path [fp=pattern dt=data_tracer [-count]]</pre>
+<p>
+
 </dd>
 
 <dt><b>AP_examineGT_LOG</b></dt>
@@ -402,7 +408,35 @@ walltime is expressed in decimal hours and maxMem is expressed in Megabytes.
 
 </dl>
 
-<h2 name="firstWorkflow">How to create a workflow from scratch</h2>
+<h2 id="createLegos">Create your own processing blocks</h2>
+
+This package was created with one thing in mind: processing EOS satellite
+data, hence, all the blocks defined for that purpose.<p>
+
+Other fields can certainly benefit from using this approach to data
+processing and the door is open to create your own dedicated task blocks
+(TB). <p>
+
+When creating a TB in whatever languge you want, it is necessary to be more
+uniform and follow certain rules for its API and how information is passed
+with its status so that both the creation tools and the processing tools
+can use this information to build the pipeline files.<p>
+
+The following rules must be followed, regardless of the language the TB is
+written in.
+
+<ul>
+<li> Parameters are to be passed as command line arguments in the form
+<tt>key=value</tt>.<br>
+Use as many as necessary, and the order in which the parameters is given
+should not matter.<br>
+Ideally, default values should be defined for all necessary parameters in
+case a parameter is omitted from the command line.
+</li>
+
+</ul>
+
+<h2 id="firstWorkflow">How to create a workflow from scratch</h2>
 
 Although workflows are quite complex and a lot of information needs to go
 there, wAPPP offers a relatively simple way to create your first workflow.
@@ -411,19 +445,101 @@ there, wAPPP offers a relatively simple way to create your first workflow.
 Previous to launch any command, it would be good if you write down in a
 piece of papers just the name of the tasks your workflow will contain and
 for each task, on which other task they depend. A processing task will not
-work if the data-downloading task has not been completed, right?  <p>
+work if the data-downloading task has not been completed, right?<p>
 
 It is quite possible that some logical considerations may require you to
 alter the number of tasks defined in the first draft.<p>
 
-A task should be something quite specific
+A task should be something quite specific: <i>do this for a specific period
+of time; say the task is completed</i>.<p>
+
+<span style="color:olive;">All steps described below require you to work from a terminal, using
+command-line tools and your favourite editor.</span><p>
+
+The following steps are recommended:<p>
+<ul>
+<li>Add the directory which contains this file to your PATH in your shell
+initialising data. In that way, you can run the scripts here from any other
+directory.</li>
+
+<li>
+If this is the first time you use wAPPP, run <tt>AP_assistant</tt>
+without any argument. This will create the file
+<tt>$HOME/.automatedProcessing</tt> describing the system
+in which you are working.<br> If you are working on an HPC system,
+make sure to do this in the main nodes (but this is highly HPC-system
+dependent)
+</li>
+
+<li>Decide on the file structure you will use to store the tasks and pipelines.</li>
+
+<li>Create a directory for you to start working, e.g.,
+<tt>$HOME/myDataProcessing</tt><br> Chances are that after the first
+attempts, you will decide on a different naming convention. Refrain from
+moving files to a new site, many of these file do contain the name of the
+directory where they are located. It is easier to repeat these steps.</li>
+
+
+<li>Change directory to <tt>$HOME/myDataProcessing</tt></li>
+
+<li>Run <tt>AP_aurora</tt> (no arguments)<br>
+Aurora will ask you a few questions and potentially it will create the
+first steps to create one processing workflow.<br>
+You will be asked to give your workflow a name, choose a meaningful one to
+you.<br>
+You will also be asked over how many days the workflow should operate,
+answer 1 to start with.<br>
+If you called your workflow <tt>computeTemperature</tt>, then Aurora
+created a directory called <tt>computeTemperature</tt> as well as a file
+called <tt>computeTemperature.aurora_in</tt> with the answers you gave
+Aurora.
+</li>
+
+<li>Change directory to <tt>./computeTemperature</tt><br>
+
+Two files were created: <tt>AP_project</tt>, which just contains a line
+with the name <tt>computeTemperature</tt>; this file is later used to
+locate other resources.<br>
+The file <tt>computeTemperature.bb</tt> was also created. 'bb' stands for
+'bare-bones', in other words, it is a file which contains the description
+of the workflow at the highest possible level: a list of tasks and their
+dependencies. If you did write those tasks in a paper, the 'bb' file is
+where you will use them.
+</li>
+
+<li>Edit <tt>computeTemperature.bb</tt> to copy the content of your piece
+of paper.<br>
+This file is not empty, and it contains a short guide to what needs to be
+added. The most important piece of information is that it shows the
+convention you should follow to name the tasks you need to execute as part
+of the workflow.
+</li>
+
+<li></li>
+
+<li></li>
+
+<li></li>
+
+<li></li>
+
+<li></li>
+
+<li></li>
+
+<li></li>
+
+<li></li>
+</ul>
 
 
 
 
-<h2 name="runPipeline">AP_runPipeline features</h2>
 
-<h3 name="RP-predefVars">AP_runPipeline predefined variables:</h3>
+
+<h2 id="runPipeline">AP_runPipeline features</h2>
+
+<h3 id="RP-predefVars">AP_runPipeline predefined variables:</h3>
 
 <b>Yeh shall not use any of these patterns inside your own definitions within
 runPipeline files</b>. Of course you can use them to form paths or other elements.
@@ -440,7 +556,7 @@ runPipeline files</b>. Of course you can use them to form paths or other element
 
 </ul>
 
-<h2 name="RP-dates">Specifying dates and ranges of dates</h2>
+<h2 id="RP-dates">Specifying dates and ranges of dates</h2>
 
 <b>wAPPP</b> uses a special notation to handle dates as the objective is to
 be able to express ranges of dates which will be used to trigger tasks.
@@ -478,9 +594,9 @@ The entries with "today", "yesterday", and "tomorrow" allow invoking
 <b>AP_tasks-manager</b> using system automated tools as <b>cron</b>
 avoiding the need to specifically declare the date in the form YYYY-MM-YY.
 
-<h2 name="extraDimensions">Specifying extra dimensions</h2>
+<h2 id="extraDimensions">Specifying extra dimensions</h2>
 
-<h2 name="controlFiles">Altering template control files.</h2>
+<h2 id="controlFiles">Altering template control files.</h2>
 
 Control files in GlobTemperature contain the information required by a
 given processor to do its task. Setting them up correctly is vital and it
@@ -517,7 +633,7 @@ diff template_ctl_file ~/newCtls.cf
 
 The differences should tell you what has been changed.<p>
 
-<h2 name="RP-dates">Data transfers <span text.color="red">blues</span></h2>
+<h2 id="RP-dates">Data transfers <span text.color="red">blues</span></h2>
 
 </body>
 </html>

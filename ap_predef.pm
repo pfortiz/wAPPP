@@ -8,7 +8,7 @@ my %pdtx; # pdtexplanation;
 my %pdtf; # pdtNumericFlag;
 my @pdtp; # pdtPrefixes
 
-@pdtp = qw(dlftp proc dqc dxst ulftp rsync ud spwn);
+@pdtp = qw(dlftp proc dqc dxst ulftp rsync ud spwn dharv);
 
 $pdtx{"dlftp"} = "a task dealing with ftp data acquisition";
 $pdtx{"proc"} = "a task dealing with data processing";
@@ -17,6 +17,7 @@ $pdtx{"dxst"} = "a task to verify if data exists";
 $pdtx{"ulftp"} = "a task dealing with ftp uploads to a remote site";
 $pdtx{"rsync"} = "a task to transfer data (upload/download) using rsync";
 $pdtx{"spwn"} = "any task not to be run in parallel";
+$pdtx{"dharv"} = "a task dealing with data harvesting";
 $pdtx{"ud"} = "a task not defined above. To be defined from scratch.";
 
 $pdtf{"dlftp"} = 1;
@@ -26,6 +27,7 @@ $pdtf{"dxst"} = 8;
 $pdtf{"ulftp"} = 16;
 $pdtf{"rsync"} = 32;
 $pdtf{"spwn"} = 64;
+$pdtf{"dharv"} = 128;
 $pdtf{"ud"} = 255;
 
 
@@ -36,19 +38,48 @@ use Exporter qw(import);
  
 our @EXPORT_OK = qw(pexp cexp getAPflags getAPtypes);
 
-our @EXPORT = qw(pexp cexp getAPflags getAPtypes validateTask);
+our @EXPORT = qw(pexp cexp getAPflags getAPtypes validateTask locateTBlegos);
 
 #check whether the task suffix is correct
 sub validateTask(){
     my $task = shift;
+    my %logos = shift;
+    my $k;
+    my %locLegos = {};
+    foreach $k (keys %main::legos){
+        print "DEF lego: $k";
+        $locLegos{$k} = 1;
+    }
     my ($prefix, $tname) = split(/-/, $task);
     if($pdtx{$prefix} eq ""){
-        return 0;
+        print "PREFIX: $prefix\n";
+        if($locLegos{$prefix} eq ""){
+            print "no PREFIX: $prefix\n";
+            return 0;
+        } else {
+            print "yes PREFIX: $prefix\n";
+            return 1;
+        }
     } else {
         return 1;
     }
 }
  
+sub locateTBlegos(){
+    my $pPath = @_[0];
+    my %legos = {};
+    print "LEGOS in $pPath\n";
+    open(P, "ls $pPath|");
+    while(<P>){
+        if(/TB_/){
+            print "LEGO found: $_\n";
+            chop;
+            $legos{$_} = "$pPath/$_";
+        }
+    }
+    return %legos;
+}
+
 sub pexp(){
     my $explain = "";
     foreach $_ (keys %pdtx){
