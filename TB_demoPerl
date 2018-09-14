@@ -1,0 +1,170 @@
+#!/usr/bin/env perl
+# Written for perl 5.x
+
+use strict;
+
+my %argDict = {};
+
+# add whatever other package you need here
+
+# function to write the status to either a file or stdout
+# 'DONE' must be part of the status line for a successful execution
+# 'DONE' must be absent when a failure occurs
+# 'FAIL' shall be present when a failure occurs
+sub logStatus(){
+    my $line = shift(@_);
+    # The script shall produce some information when it has concluded
+    # correctly writing to 'statusFile' or stdout if statusFile is not present
+    my $oFileName = $argDict{"statusFile"};
+    if( $oFileName ne "stdout"){
+        open(LF, ">$oFileName");
+        print LF "$line\n";
+        close(LF);
+    } else {
+        print "$line\n";
+    }
+    exit;
+}
+
+my $me = $0;
+my @irene = split(/\//, $0);
+my $myself = pop(@irene);
+
+#print me
+#print myself
+
+# basic parameters
+# These parameters MUST be part of the API
+my %basicParametersDefault = (
+    'statusFile' => 'stdout',
+    );
+
+my %basicParametersPipeVal = (
+    'statusFile' => 'MY_LOGFILE',
+    );
+
+my %basicParametersMeaning = (
+    'statusFile' => 'File where a status line is written',
+    );
+
+
+# your own parameters
+# any parameter with default eq 'None' is treated as mandatory
+my %parametersDefault = (
+    'date' => 'None',
+    'inputFile' => 'None',
+    'action' => 'purge',
+    );
+my %parametersPipeVal = (
+    'date' => 'TODAY',
+    'inputFile' => 'RAW_DIR/DAILY_PATH/YYY_SMM_SDD_PQsensors.txt',
+    'action' => 'purge',
+    );
+my %parametersMeaning = (
+    'date' => 'Date to apply for the processing',
+    'inputFile' => 'Input file',
+    'action' => 'apply a selected method',
+    );
+
+my @inputs = ();
+my $pval;
+my $p;
+my $fail;
+foreach $p (keys %basicParametersDefault){
+    $argDict{$p} = $basicParametersDefault{$p};
+    $pval = $basicParametersPipeVal{$p};
+    push @inputs, "$p=$pval";
+}
+
+foreach $p (keys %parametersDefault){
+    $argDict{$p} = $parametersDefault{$p};
+    $pval = $parametersPipeVal{$p};
+    push @inputs, "$p=$pval";
+}
+
+my @pipeParams = (
+        "HISTORY_DIR = /Users/pfo/AP_HISTORY",
+        "RAW_DIR = /path/to/raw-data",
+        "COOKED_DIR = /path/to/processed-data",
+        "DAILY_PATH = YYY/SMM/SDD",
+        "DAILY_NAME = YYY_SMM_SDD",
+        "MY_LOGFILE = /path/to/logs/DAILY_NAME.log",
+#        "DAILY_PATH = HISTORY_DIR/YYY/SMM/SDD"
+        );
+
+$fail = join(" ", @inputs);
+my @linesToRun = (
+        "sexec $me $fail >> /dev/null",
+        );
+
+#print argDict
+
+$_;
+foreach $_ (@ARGV){
+    if(/=/){
+        @irene = split(/=/);
+        $argDict{$irene[0]} = $irene[1];
+    } else {
+        $argDict{$_} = 1;
+    }
+}
+
+# DESCRIPTION BLOCK, activated if the CL argument -describe is present
+if($argDict{"-describe"} == 1){
+    foreach $p (keys %basicParametersDefault){
+        $fail = $basicParametersDefault{$p};
+        print "$p $fail\n";
+    }
+    foreach $p (keys %parametersDefault){
+        print "$p $parametersDefault{$p}\n";
+    }
+    exit;
+}
+
+if($argDict{"-pipeParams"} == 1){
+    foreach $p (@pipeParams){
+        print "$p\n";
+    }
+    exit;
+}
+
+if($argDict{"-linesToRun"} == 1){
+    foreach $p (@linesToRun){
+        print "$p\n";
+    }
+    exit;
+}
+
+
+# Verify that mandatory parameters are present 
+
+$fail = "missing:";
+for $p (keys %argDict){
+    if($argDict{$p} eq "None"){
+        $fail .= " $p";
+    }
+}
+
+
+# Note that on failing (whatever the reason) the correct action is to call 
+# logStatus, which exits the execution leaving a record
+
+my $msg;
+if($fail ne "missing:"){
+    $msg = "FAIL: Arguments $fail";
+    &logStatus($msg);
+}
+
+# The execution block. Do whatever you need to do.
+
+
+# End of the execution block
+
+# The pipeline software does require and ending message saying that the
+# operation was successful or if it fails
+# 'DONE' must be part of the status line for a successful execution
+# 'DONE' must be absent when a failure occurs
+# 'FAIL' shall be present when a failure occurs
+$msg = "DONE with flying colours";
+&logStatus($msg);
+

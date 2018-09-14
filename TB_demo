@@ -34,14 +34,21 @@ myself = me.split("/")[-1]
 # These parameters MUST be part of the API
 basicParameters = {
     "statusFile":{"default":"stdout",
+                  "pipeVal":"stdout",
                   "meaning":"File where a status line is written"},
     }
 # your own parameters
 # any parameter with default == None is treated as mandatory
 parameters = {
-    "date":{"default":None, "meaning":"Date to apply for the processing"},
-    "inputFile":{"default":None, "meaning":"Input file"},
-    "action":{"default":"purge", "meaning":"apply the purge method"},
+    "date":{"default":None,
+            "pipeVal":"TODAY",
+            "meaning":"Date to apply for the processing"},
+    "inputFile":{"default":None,
+            "pipeVal":"RAW_DIR/DAILY_PATH/YYY_SMM_SDD_PQsensors.txt",
+            "meaning":"Input file"},
+    "action":{"default":"purge",
+            "pipeVal":"append",
+            "meaning":"apply the purge method"},
 #    "executable":{"default":me, "meaning":"Name of this executable file"},
 }
 
@@ -49,14 +56,18 @@ argDict = {}
 inputs = []
 for p in basicParameters.keys():
         argDict[p] =  basicParameters[p]["default"]
-        inputs.append("{}=xxx".format(p))
+        inputs.append("{}={}".format(p,  basicParameters[p]["pipeVal"]))
 for p in parameters.keys():
         argDict[p] =  parameters[p]["default"]
-        inputs.append("{}=xxx".format(p))
+        inputs.append("{}={}".format(p,  parameters[p]["pipeVal"]))
 
 pipeParams = [
         "HISTORY_DIR = /Users/pfo/AP_HISTORY",
-        "DAILY_PATH = HISTORY_DIR/YYY/SMM/SDD"
+        "RAW_DIR = /path/to/raw-data",
+        "COOKED_DIR = /path/to/processed-data",
+        "DAILY_PATH = YYY/SMM/SDD",
+        "DAILY_NAME = YYY_SMM_SDD"
+#        "DAILY_PATH = HISTORY_DIR/YYY/SMM/SDD"
         ]
 
 linesToRun = [
