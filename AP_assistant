@@ -627,6 +627,7 @@ INSTRUCTIONS
 #                print "$key : $value\n";
             }
         }
+        print "pfo was here 1\n";
         foreach $tsk (@lot){
             if($dependsOn{$tsk} ne ""){
                 @dtasks = split(" ", $dependsOn{$tsk});
@@ -642,11 +643,17 @@ INSTRUCTIONS
                 }
             }
         }
+        print "pfo was here 2\n";
         if($errors == 1){
             print "ERRORS FOUND. Fix task names/dependency-names before proceeding\n";
             exit;
         }
-exit;
+
+
+
+#exit;
+
+        print "pfo was here 3\n";
         foreach $_ (@fflines){
             if(/^#/) { next; }
             if(/=/){  # assume a key/value pair
@@ -1850,36 +1857,68 @@ sub bbud(){
     my $_ = $tn;
     $pipeparams = "";
     $linestorun = "";
+    $argstodef = "";
+    $argString = "";
+    $blockName = "";
     if(/TB_/){
         @pp = split(/-/);
         print "$tn is a lego block\n";
-        $ppath = $legos{$pp[0]};
+        $blockName = $pp[0];
+        $ppath = $legos{$blockName};
+#        $argString = $ppath;
         print "path: $ppath\n";
         open(P, "$ppath -pipeParams|");
         while(<P>){
             $pipeparams .= $_;
         }
         close(P);
+        open(P, "$ppath -describe|");
+        while(<P>){
+            @pp = split();
+            $argname = $pp[0];
+            $argName = uc($argname);
+            $argValue = $pp[1];
+            if($argValue eq "None"){ $argValue = ""; }
+
+            $aname = "${blockName}_$argName";
+            $argString .= " $argname=$aname";
+            $argdef = "${aname} = $argValue\n";
+            $argstodef .= $argdef;
+        }
+        close(P);
         open(P, "$ppath -linesToRun|");
         while(<P>){
+            if(/THE_ARGUMENTS/){
+                print "MUST SUBSTITUTE THE_ARGUMENTS for $argString\n";
+                $_ =~ s/THE_ARGUMENTS/$argString/;
+            }
             $linestorun .= $_;
         }
         close(P);
     }
     if($tagLocal eq "ignore"){
         print FF <<"FF_FILE";
-$tn.atMocht=*
+$tn.atMochtung=*
 
 $tn.parameters.begin
 # you can edit lines below this one
 $pipeparams# you can edit lines above this one
+
+# arguments for $blockName
+# you should edit the lines below this one
+$argstodef# you should've edited the lines above this one
+
 $tn.parameters.end
 
 $tn.$tagParallel.begin
+
 # you can edit lines below this one
 $linestorun# you can edit lines above this one
+
 $tn.$tagParallel.end
 FF_FILE
+
+# sexec $argString
 
 # $tn.$tagLocal.begin
 # # you can edit lines below this one
@@ -1890,7 +1929,7 @@ FF_FILE
 
     } else {
         print FF <<"FF_FILE";
-$tn.atMocht=*
+$tn.atMochat=*
 $tn.parameters.begin
 # you can edit lines below this one
 $pipeparams

@@ -39,7 +39,7 @@ BEGIN{
     $packagePath = $myPath;
 }
 
-print "path: $packagePath\n";
+print "AP_create_Pipelines path: $packagePath\n";
 use lib "$packagePath";
 
 my %apDict = &getFromRc();

@@ -71,7 +71,7 @@ pipeParams = [
         ]
 
 linesToRun = [
-        "sexec {} {} >> /dev/null".format(me, " ".join(inputs))
+        "sexec {} THE_ARGUMENTS >> /dev/null".format(me)
         ]
 
 #print argDict
