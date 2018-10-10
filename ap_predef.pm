@@ -19,6 +19,7 @@ $pdtx{"rsync"} = "a task to transfer data (upload/download) using rsync";
 $pdtx{"spwn"} = "any task not to be run in parallel";
 $pdtx{"dharv"} = "a task dealing with data harvesting";
 $pdtx{"ud"} = "a task not defined above. To be defined from scratch.";
+#$pdtx{"TB_*"} = "a task present in user-defined TaskBlock directories.";
 
 $pdtf{"dlftp"} = 1;
 $pdtf{"proc"} = 2;
@@ -28,7 +29,8 @@ $pdtf{"ulftp"} = 16;
 $pdtf{"rsync"} = 32;
 $pdtf{"spwn"} = 64;
 $pdtf{"dharv"} = 128;
-$pdtf{"ud"} = 255;
+#$pdtf{"TB_*"} = 256;
+$pdtf{"ud"} = 256;
 
 
 my @daysInMond = qw(0 31 28 31 30 31 30 31 31 30 31 30 31);
@@ -68,15 +70,41 @@ sub validateTask(){
 sub locateTBlegos(){
     my $pPath = @_[0];
     my %legos = {};
-    print "LEGOS in $pPath\n";
+    my @pp;
+#    print "LEGOS in $pPath\n";
     open(P, "ls $pPath|");
     while(<P>){
         if(/TB_/){
-            print "LEGO found: $_\n";
+#            print "LEGO found: $_\n";
             chop;
             $legos{$_} = "$pPath/$_";
         }
     }
+    # addition on October 10, 2018 to account for the fact that TBlegos
+    # could be located in different paths, and these paths are listed in
+    # the AP_project file in the current directory.
+    open(AP, "<AP_project");
+    while(<AP>){
+        if(/tbPaths/){
+            chop;
+            my ($prefix, $paths) = split(/=/);
+            @pp = split(/;/, $paths);
+            foreach $pPath (@pp){
+                print "Scanning $pPath for TB_s\n";
+                if(-e $pPath){
+                    open(P, "ls $pPath|");
+                    while(<P>){
+                        if(/TB_/){
+                            chop;
+                            print "LEGO found: $_\n";
+                            $legos{$_} = "$pPath/$_";
+                        }
+                    }
+                }
+            }
+        }
+    }
+    close(AP);
     return %legos;
 }
 

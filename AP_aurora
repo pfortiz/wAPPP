@@ -212,8 +212,30 @@ ADVICE
         }
         $project_name = $a;
         $traceFile = "$newdir/AP_project";
+        print "Please enter the full path of the directory(ies) where TB_x scripts need to be.\n";
+        print "   Use a space separated list of paths where TB_s can exist\n";
+        print "   Press ENTER if you do not need this features: ";
+        $_ = &rawanswer();
+        $tbPaths = $_;
+        @pathsToTB = split();
+#        $newdir = "$cwd/$p";
+        $nPaths = 0;
+        foreach $pathos (@pathsToTB){
+            if(!-e $pathos){
+                print "Creating directory $pathos\n";
+                system("mkdir -p -m 775 $pathos");
+            }
+            $nPaths ++;
+        }
+        $project_name = $a;
+        $traceFile = "$newdir/AP_project";
         open(TRACE, ">$traceFile");
-        print TRACE "$project_name\n";
+        print TRACE "projectName=$project_name\n";
+        if($nPaths > 0){
+            $lePaths = join(";",@pathsToTB);
+            print TRACE "tbPaths=$lePaths\n";
+        }
+
         close(TRACE);
     } else {
         print "We are currently in $cwd.\nProject: $project_name\n";

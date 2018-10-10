@@ -54,7 +54,7 @@ my %apDict = &getFromRc();
 
 foreach $_ (sort keys %apDict){
     $$_ = $apDict{$_};
-    print "AP-DICT: $_ $$_\n";
+#    print "AP-DICT: $_ $$_\n";
 }
 
 $site = $apDict{"site"};
@@ -63,6 +63,7 @@ $isParallel = $apDict{"parallel"};
 
 $navail = &getNavailableProcesses(%apDict);
 print "Number of available processes: $navail\n";
+
 
 %legos = &locateTBlegos($legoPath);
 
@@ -132,6 +133,7 @@ Use $me -create-bb-sample to create a sample BB file.
 USAGE
     exit;
 }
+#%legos = &locateTBlegos($legoPath);
 #    open(TS, "ls *.td |");
 #    while(<TS>){
 #    #    print;
@@ -1889,7 +1891,7 @@ sub bbud(){
         open(P, "$ppath -linesToRun|");
         while(<P>){
             if(/THE_ARGUMENTS/){
-                print "MUST SUBSTITUTE THE_ARGUMENTS for $argString\n";
+#                print "MUST SUBSTITUTE THE_ARGUMENTS for $argString\n";
                 $_ =~ s/THE_ARGUMENTS/$argString/;
             }
             $linestorun .= $_;

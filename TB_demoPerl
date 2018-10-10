@@ -94,7 +94,7 @@ my @pipeParams = (
 
 $fail = join(" ", @inputs);
 my @linesToRun = (
-        "sexec $me $fail >> /dev/null",
+        "sexec $me THE_ARGUMENTS >> /dev/null",
         );
 
 #print argDict
