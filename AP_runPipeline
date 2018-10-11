@@ -315,6 +315,14 @@
 #  need to deactivate that feature during execution.
 #
 
+# October 11, 2018
+# While preparing this software to run automated data acquisition software
+# we may need to make the date-string to understand: today and yesterday
+# No need unless one wants to run AP_runPipeline in standalone mode, but
+# that is not how it is supposed to be done. AP_task-manager knows how to
+# handle today and yesterday and it should pass those parameters to this
+# code.
+
 
 use Time::Local;
 # no strict, I need black magic
@@ -381,7 +389,8 @@ my @parts = split(/\//, $0);
 my $me = pop(@parts);
 if($#ARGV < 1){
     print "$apDict{'site'} $apDict{'runPipelinePath'}\n";
-    die "Usage:  $me pipe-file date-string [varName=varValue] [-exec] [-slave]\n\n";
+    print "Usage:  $me pipe-file date-string [varName=varValue] [-exec] [-slave]\n\n";
+    die "\tdate-string has the form: yyyy-mm-dd[:yyyy-mm-dd]\n\n";
 }
 
 my @argos;
@@ -521,6 +530,7 @@ $pid = $$;
 # let's see what goes on with the date
 # is : present in the date string?
 $_ = $date;
+
 if(/\@/){        # we've got a segmented range of dates
     print STDERR "segmented dates: $date\n";
     @LISTOFDATES = &segmentedDates($date, "-");
@@ -2540,7 +2550,7 @@ LOGFILE1 = /data/atsr/LOG_FILES/GT_CMSAF/GT_CMS_3U/YYY/driver_log_cmsaf_msg_dDDD
 #definitions for submissions to a parallel queue (maybe system dependent)
 WALLTIME = 8.25
 MEMORY = 19990mb
-NOTIFY = pfo2\@le.ac.uk
+NOTIFY = pfortiz\@protonmail.com
 
 
         The idea is that as Keys are defined, they can be used inside

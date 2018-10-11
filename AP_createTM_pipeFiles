@@ -39,7 +39,6 @@ BEGIN{
     $packagePath = $myPath;
 }
 
-print "AP_create_Pipelines path: $packagePath\n";
 use lib "$packagePath";
 
 my %apDict = &getFromRc();
@@ -75,6 +74,7 @@ my $memory = shift(@ARGV);
 
 $cwd = `pwd`;
 chop($cwd);
+print "AP_create_Pipelines path: $packagePath on $cwd\n";
 @paths = split('/',$cwd);
 $path = pop(@paths);
 

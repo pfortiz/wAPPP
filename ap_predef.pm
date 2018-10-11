@@ -49,7 +49,7 @@ sub validateTask(){
     my $k;
     my %locLegos = {};
     foreach $k (keys %main::legos){
-        print "DEF lego: $k\n";
+#        print "DEF lego: $k\n";
         $locLegos{$k} = 1;
     }
     my ($prefix, $tname) = split(/-/, $task);
