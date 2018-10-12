@@ -222,9 +222,14 @@ foreach $_ (@tparams){
 #    print FT "$PROCESSOR\n";
 #}
 
-if($site ne "nonParallel"){
-    print FT "thisPipe = TASK_PATH/$pName.specific\n";
-} elsif($PROCESSOR ne ""){
+#if($site ne "nonParallel"){
+#    print FT "thisPipe = TASK_PATH/$pName.specific\n";
+#} elsif($PROCESSOR ne ""){
+#    print FT "$PROCESSOR\n";
+#}
+
+print FT "thisPipe = TASK_PATH/$pName.specific\n";
+if($PROCESSOR ne ""){
     print FT "$PROCESSOR\n";
 }
 
@@ -249,7 +254,7 @@ while(<FTT>){
     } else {
         $taskTag = "";
     }
-#    print FT "$taskTag$_\n";
+    print "AP_createTM_pipeFiles $taskTag$_\n";
     print FT "$_\n";
 }
 close(FTT);
@@ -262,7 +267,7 @@ close(FT);
 # when we are in any non-Parallel system.
 
 if($site eq "nonParallel"){
-    exit;
+#    exit;
 }
 
 
@@ -270,8 +275,8 @@ $daily = "$pName.specific";
 open(DP, ">$daily");
 print  DP <<"SYSTEM_STUFF";
 #The following line must exist
-
 --PARAMETERS
+
 TAG = $pName
 SITE_PATH=$basePath
 AP_PATH=$apPath
@@ -309,7 +314,7 @@ foreach $_ (@tparams){
 
 print DP "$controlDetails\n";
 
-print DP "#The following line must exist\n\n--TASKS\n";
+print DP "#The following line must exist\n--TASKS\n\n";
 my $tid = 1;
 my $tasktag;
 open(B, "<$dailytasks");

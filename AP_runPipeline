@@ -2044,16 +2044,6 @@ for( $tt = 0; $tt < $nTasks; $tt++){
 # taskd: ECHO message       -Logs 'message' to the LOG file
         if($versyntax == 1){ next; }
         print LOG "$ts $tid echo:  $tSteps\n";
-    } elsif($kind eq "exec"){
-# taskd: EXEC command   -Executes a command and wait for it to finish to go to next task. No execution is done in non-exec mode
-        if($versyntax == 1){ next; }
-        if($execute == 1){
-            print LOG "$ts $tid  \"$tSteps\" \n";
-            system ("$tSteps");
-        } else {
-            print LOG "$ts $tid  \"$tSteps\"  in test mode\n";
-            system ("$tSteps");
-        }
 
     } elsif($kind eq "mkdir"){
 # taskd: MKDIR absolute-path   -creates absolute-path if it doesn't exist
@@ -2077,6 +2067,16 @@ for( $tt = 0; $tt < $nTasks; $tt++){
             print LOG "$ts chdir fail. No $newFullPath\n";
         }
 
+    } elsif($kind eq "exec"){
+# taskd: EXEC command   -Executes a command and wait for it to finish to go to next task. Execution happens in non-exec mode
+        if($versyntax == 1){ next; }
+        if($execute == 1){
+            print LOG "$ts $tid  \"$tSteps\" \n";
+            system ("$tSteps");
+        } else {
+            print LOG "$ts $tid  \"$tSteps\"  in test mode\n";
+            system ("$tSteps");
+        }
 
     } elsif($kind eq "sexec"){
 # taskd: SEXEC command   -Executes a command and wait for it to finish to go to next task executes only in exec mode
@@ -2103,12 +2103,13 @@ for( $tt = 0; $tt < $nTasks; $tt++){
         # did with the parallel
         if(!-e $local){ system("mkdir -p -m 775 $local"); }
         $shellFile = "$local/${procedureId}_${stepo}.sh";
+        print "shellFile=$shellFile\n";
         open(S, ">$shellFile");
 #        print S "$tSteps\n";
         if($DELAY eq "WAIT"){
             print S "$tStepsShrt\ntouch $marker\n";
         } else {
-            print S "$tStepsShrt\n";
+            print S "$tStepsShrt &\n";
         }
         close(S);
         if($execute == 1){
@@ -2129,7 +2130,7 @@ for( $tt = 0; $tt < $nTasks; $tt++){
         if(-e $comm){
             print LOG "$ts $comm not found\n";
         } else {
-        if($versyntax == 1){ next; }
+            if($versyntax == 1){ next; }
             if($execute == 1){
                 system ("bash $comm");
             }

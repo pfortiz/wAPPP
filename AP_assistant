@@ -338,7 +338,7 @@ if($inFile eq "-create-bb-sample"){
                     }
                 } elsif(/parallel.begin/){
                     $fftcontent{$task} .= $_;
-                    $inFile = "pipelines/$task/parallel.rpl";
+                    $inFile = "pipelines/$task/in_parallel.rpl";
                     if(-e $inFile){
                         open(I, "<$inFile");
                         while(<I>){
@@ -479,7 +479,7 @@ if($inFile eq "-create-bb-sample"){
                                 unlink("$dire/history");
 
                                 print FF "\n$tn.parallel.begin\n";
-                                open(O, "<$dire/parallel.rpl");
+                                open(O, "<$dire/in_parallel.rpl");
                                 while(<O>){
                                     print FF;
                                 }
@@ -538,11 +538,15 @@ print FF "# is provided as a file. See examples or documentation.\n";
                 $ff_taty = "bb$taty";
                 if($site eq "nonParallel"){
 #                    print "NON-PARALLEL situation\n";
-                    $tagLocal = "ignore";
-                    $tagParallel = "local";
+#                    $tagLocal = "ignore";
+#                    $tagParallel = "local";
+                    $tagLocal = "local";
+                    $tagParallel = "parallel";
+                    $tagSubmit = "local-bg NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES"
                 } else {
                     $tagLocal = "local";
                     $tagParallel = "parallel";
+                    $tagSubmit = "qsub NOWAIST RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES"
                 }
 
                 # this way we insure that if we introduce new types, code
@@ -666,10 +670,12 @@ INSTRUCTIONS
                 $value =~ s/^\s*//;
                 $value =~ s/\s*$//;
                 $ffdict{$key} = $value;
-                if($key eq "task"){
-                    push @lot, $value;
-                }
+
+#                if($key eq "task"){
+#                    push @lot, $value;
+#                }
 #                print "$key : $value\n";
+
             }
             if(/\.begin$/){ 
                 $open = 1;
@@ -724,6 +730,7 @@ INSTRUCTIONS
         undef @pipeDirs;
         $pipes = "";
         foreach $t (@lot){
+            print "Working my ass off in $t\n";
             $tty = $ffdict{"$t.type"};
             $ttr = $ffdict{"$t.timeRestrictions"};
             $twt = $ffdict{"$t.wallTime"};
@@ -805,15 +812,15 @@ INSTRUCTIONS
                 print LOCAL "$tlc\n";
                 close(LOCAL);
             }
-            $file = "$dire/parallel.rpl";
+            $file = "$dire/in_parallel.rpl";
             if(!-e $file){
                 open(PARLL, ">$file");
                 print PARLL "$tpl\n";
                 close(PARLL);
             }
             chdir($dire);
-            print "$mkplfiles parameters.rpl local.rpl parallel.rpl $twt $txm\n";
-            system("$mkplfiles parameters.rpl local.rpl parallel.rpl $twt $txm");
+            print "$mkplfiles parameters.rpl local.rpl in_parallel.rpl $twt $txm\n";
+            system("$mkplfiles parameters.rpl local.rpl in_parallel.rpl $twt $txm");
             chdir($cwd);
             
         }
@@ -1007,184 +1014,107 @@ EXPLANATION
 
 }
 
-sub makeStubs(){
-    undef @tdfiles;
-    open (TDS, "ls *.td |");
-    while(<TDS>){
-        chop;
-        $module = $_;
-        if($_ eq "sample.td"){ next; }
-        push @tdfiles, $_;
-        $filesProvided{$_} = 1;
-        $defs = "d_$_";
-        open(T, "<$_");
-        while(<T>){
-            chop;
-            if(/^#/ or !/=/){
-                next;
-            }
-            ($key, $value) = split(/=/,$_,2);
-            $key =~ s/^\s*//;
-            $key =~ s/\s*$//;
-            $value =~ s/^\s*//;
-            $value =~ s/\s*$//;
-            $$defs{lc($key)} = $value;
-        }
-        close(T);
-        $_ = $$defs{"dependencies"};
-#        print "$module depends on $_\n";
-        @dependencies = split;
-        foreach $d (@dependencies){
-            $filesNeeded{"$d.td"} = 1;
-        }
-    }
-    close(TDS);
-
-    $pending = 0;
-    foreach $d (keys %filesNeeded){
-        if($filesProvided{$d} eq ""){
-            print "Missing dependency $d making it\n";
-            $pending++;
-            $d =~ s/\.td//;
-            ($prefix, $suffix) = split(/-/, $d);
-#            &make_td_file($d, $dtype{$prefix});
-            &make_td_file($d, $prefix);
-        }
-    }
-
-    if($pending > 0){
-        print "Edit the newly created files and try again.\n";
-        die "Only when every dependency is resolved, creation of the stubs will be done\n";
-    }
-
-    print "maxFails = 10\n\n";
-    print "NRT_time_delay_in_days = 4\n\n";
-    foreach $_ (@tdfiles){
-        $defs = "d_$_";  # this includes the ".td"
-
-        $module = $$defs{"name"};
-        $dep = $$defs{"dependencies"};
-        $trest = $$defs{"timerestrictions"};
-        if($trest eq ""){ $trest = "*/*/*/*"; }
-        $mmem = $$defs{"maxmemory"};
-        if($mmem eq ""){ $mmem = "9998"; }
-        $wall = $$defs{"maxwalltime"};
-        if($wall eq ""){ $wall = "1.1"; }
-        $lt = $$defs{"type"};
-        $dire = "$cwd/pipelines/$module";
-        if(!-e $dire){
-            system("mkdir -p -m 775 $dire");
-        }
-        # in all cases I need to create stubs for runPipeline
-        $atMost = "*";
-
-        if($lt eq "proc"){
-            $type = "proc";
-            $file = "$dire/parameters.rpl";
-            if(!-e $file){
-                open(F, ">$file");
-print "BasePath = $basePath\n";
-                print F <<"FILE_INPUT";
-HISTORY_DIR = $historyPath
-DAILY_PATH = HISTORY_DIR/YYY/SMM/SDD
-FILE_INPUT
-                close(F);
-            }
-            $file = "$dire/local.rpl";
-            if(!-e $file){
-                open(F, ">$file");
-                print F <<"FILE_INPUT";
-echo about to submit the processing pipeline to the grid
-qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
-FILE_INPUT
-                close(F);
-            }
-            $file = "$dire/parallel.rpl";
-            if(!-e $file){
-                open(F, ">$file");
-                print F <<"FILE_INPUT";
-echo  Preparing for task TASK_ID
-# Make sure the history directory for the day is created. PFO. 2017-06-18
-mkdir DAILY_PATH
-
-# The following line is an example only, but you may need to change
-# non-standard fields in the control file
-#exec FLEX_MAKE_CONTROL TEMPLATE_CONTROL selected_year=YYY selected_month=SMM selected_day=SDD > CONTROL_FILE
-exec MAKE_CONTROL TEMPLATE_CONTROL YYY-SMM-SDD > CONTROL_FILE
-sexec PROCESSOR < CONTROL_FILE > LOG_FILE
-assignto hasDone command EXAMINE_DONE LOG_FILE -z
-if hasDone gt 0 then
-    sexec touch DONE_TRACER
-    sexec rm CONTROL_FILE
-    # uncomment next line to compress the log-file
-    # sexec gzip LOG_FILE
-    # if you never need them, get rid of the log-file
-    # sexec rm LOG_FILE
-    # sexec touch DONE_TRACER
-else
-    sexec touch FAIL_TRACER
-endif
-
-FILE_INPUT
-                close(F);
-            }
-            # we need now to create the processor file
-#            $file = "$dire/PROCESSOR";
+#sub makeStubs(){
+sub makeStrobes(){
+#    undef @tdfiles;
+#    open (TDS, "ls *.td |");
+#    while(<TDS>){
+#        chop;
+#        $module = $_;
+#        if($_ eq "sample.td"){ next; }
+#        push @tdfiles, $_;
+#        $filesProvided{$_} = 1;
+#        $defs = "d_$_";
+#        open(T, "<$_");
+#        while(<T>){
+#            chop;
+#            if(/^#/ or !/=/){
+#                next;
+#            }
+#            ($key, $value) = split(/=/,$_,2);
+#            $key =~ s/^\s*//;
+#            $key =~ s/\s*$//;
+#            $value =~ s/^\s*//;
+#            $value =~ s/\s*$//;
+#            $$defs{lc($key)} = $value;
+#        }
+#        close(T);
+#        $_ = $$defs{"dependencies"};
+##        print "$module depends on $_\n";
+#        @dependencies = split;
+#        foreach $d (@dependencies){
+#            $filesNeeded{"$d.td"} = 1;
+#        }
+#    }
+#    close(TDS);
+#
+#    $pending = 0;
+#    foreach $d (keys %filesNeeded){
+#        if($filesProvided{$d} eq ""){
+#            print "Missing dependency $d making it\n";
+#            $pending++;
+#            $d =~ s/\.td//;
+#            ($prefix, $suffix) = split(/-/, $d);
+##            &make_td_file($d, $dtype{$prefix});
+#            &make_td_file($d, $prefix);
+#        }
+#    }
+#
+#    if($pending > 0){
+#        print "Edit the newly created files and try again.\n";
+#        die "Only when every dependency is resolved, creation of the stubs will be done\n";
+#    }
+#
+#    print "maxFails = 10\n\n";
+#    print "NRT_time_delay_in_days = 4\n\n";
+#    foreach $_ (@tdfiles){
+#        $defs = "d_$_";  # this includes the ".td"
+#
+#        $module = $$defs{"name"};
+#        $dep = $$defs{"dependencies"};
+#        $trest = $$defs{"timerestrictions"};
+#        if($trest eq ""){ $trest = "*/*/*/*"; }
+#        $mmem = $$defs{"maxmemory"};
+#        if($mmem eq ""){ $mmem = "9998"; }
+#        $wall = $$defs{"maxwalltime"};
+#        if($wall eq ""){ $wall = "1.1"; }
+#        $lt = $$defs{"type"};
+#        $dire = "$cwd/pipelines/$module";
+#        if(!-e $dire){
+#            system("mkdir -p -m 775 $dire");
+#        }
+#        # in all cases I need to create stubs for runPipeline
+#        $atMost = "*";
+#
+#        if($lt eq "proc"){
+#            $type = "proc";
+#            $file = "$dire/parameters.rpl";
 #            if(!-e $file){
 #                open(F, ">$file");
-#                $udvalue = $$defs{"processor"};
-#                $proc = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/BIN/$udvalue";
-#                print F "$proc\n";
+#print "BasePath = $basePath\n";
+#                print F <<"FILE_INPUT";
+#HISTORY_DIR = $historyPath
+#DAILY_PATH = HISTORY_DIR/YYY/SMM/SDD
+#FILE_INPUT
 #                close(F);
 #            }
-            $udvalue = $$defs{"template_control_file"};
-            if(!-e $udvalue){
-                die "$udvalue does not exist. Fix before going ahead\n";
-            }
-            system("cp $udvalue $dire");
-            $file = "$dire/PROCESSOR";
-            if(!-e $file){
-                open(F, ">$file");
-                $udvalue = $$defs{"processor"};
-                if($udvalue =~ /^\//){
-                    $proc = "$udvalue";
-                } else {
-                    $proc = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/BIN/$udvalue";
-                }
-                print F "$proc\n";
-                close(F);
-            }
-
-
-        } elsif($lt eq "spwn"){
-            # similar to process but processes are spawned to the shell
-            # rather than to a parallel system. Nothing prevents a parallel
-            # system to use this procedure.
-            $type = "spwn";
-            $file = "$dire/parameters.rpl";
-            if(!-e $file){
-                open(F, ">$file");
-print "BasePath = $basePath\n";
-                print F <<"FILE_INPUT";
-HISTORY_DIR = $historyPath
-DAILY_PATH = HISTORY_DIR/YYY/SMM/SDD
-FILE_INPUT
-                close(F);
-            }
-            $file = "$dire/local.rpl";
-            if(!-e $file){
-                open(F, ">$file");
-                print F <<"FILE_INPUT";
-echo about to submit the processing pipeline as a background job if possible
-sexec NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
-FILE_INPUT
-                close(F);
-            }
-#            $file = "$dire/parallel.rpl";
+#            $file = "$dire/local.rpl";
+#            if(!-e $file){
+#                open(F, ">$file");
+#                print F <<"FILE_INPUT";
+#echo about to submit the processing pipeline to the grid
+#qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
+#FILE_INPUT
+#                close(F);
+#            }
+#            $file = "$dire/in_parallel.rpl";
 #            if(!-e $file){
 #                open(F, ">$file");
 #                print F <<"FILE_INPUT";
 #echo  Preparing for task TASK_ID
+## Make sure the history directory for the day is created. PFO. 2017-06-18
+#mkdir DAILY_PATH
+#
 ## The following line is an example only, but you may need to change
 ## non-standard fields in the control file
 ##exec FLEX_MAKE_CONTROL TEMPLATE_CONTROL selected_year=YYY selected_month=SMM selected_day=SDD > CONTROL_FILE
@@ -1206,13 +1136,15 @@ FILE_INPUT
 #FILE_INPUT
 #                close(F);
 #            }
-
-
-
-            # dealing with a control file to be used with the command. Too
-            # much GT driven, in general, we don't know what the user will
-            # do. Not deleting the lines as they come useful later on.
-
+#            # we need now to create the processor file
+##            $file = "$dire/PROCESSOR";
+##            if(!-e $file){
+##                open(F, ">$file");
+##                $udvalue = $$defs{"processor"};
+##                $proc = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/BIN/$udvalue";
+##                print F "$proc\n";
+##                close(F);
+##            }
 #            $udvalue = $$defs{"template_control_file"};
 #            if(!-e $udvalue){
 #                die "$udvalue does not exist. Fix before going ahead\n";
@@ -1230,305 +1162,379 @@ FILE_INPUT
 #                print F "$proc\n";
 #                close(F);
 #            }
-
-
-        } elsif($lt eq "dqc"){
-            $type = "dqc";
-            $file = "$dire/parameters.rpl";
-            if(!-e $file){
-                open(F, ">$file");
-                $udvalue = $$defs{"product_code"};
-                $udbasePath = $$defs{"base_path"};
-                print F <<"FILE_INPUT";
-HISTORY_DIR = $historyPath
-DAILY_PATH = HISTORY_DIR/YYY/SMM/SDD
-PRODUCT_CODE = $udvalue
-PATH_TO_PRODUCT = $udbasePath
-LOG_FILE = DAILY_PATH/verify_PRODUCT_CODE_YYY_SMM_SDD.log
-FILE_INPUT
-                close(F);
-            }
-            $file = "$dire/local.rpl";
-            if(!-e $file){
-                open(F, ">$file");
-                print F <<"FILE_INPUT";
-qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
-FILE_INPUT
-                close(F);
-            }
-            $file = "$dire/parallel.rpl";
-            if(!-e $file){
-                open(F, ">$file");
-                print F <<"FILE_INPUT";
-# Make sure the history directory for the day is created. PFO. 2017-06-18
-mkdir DAILY_PATH
-
-sexec MONTY VERIFIER PATH_TO_PRODUCT/YYY/SMM/SDD/PRODUCT_CODE  > LOG_FILE
-sexec touch DONE_TRACER
-FILE_INPUT
-                close(F);
-            }
-
-
-
-
-        } elsif($lt eq "dlftp"){
-            $atMost = 42;
-            $type = "dlftp";
-            $file = "$dire/${module}FtpDetails";
-#FTP_SITE=
-#USERNAME=
-#PASSWORD=
-#REMOTE_PATH=
-#LOCAL_PATH=
-#PROJECT=
-#PRODUCT=
-            # we need to create an ftp file
-            if(!-e $file){
-                open(F, ">$file");
-                $udvalue = $$defs{"ftp_site"};
-                print F "ftpsite=$udvalue\n";
-                $udvalue = $$defs{"username"};
-                print F "uname=$udvalue\n";
-                $udvalue = $$defs{"password"};
-                print F "pwd=$udvalue\n";
-                $remPath = $$defs{"remote_path"};
-                print F "remotePath=$remPath\n";
-                $locPath = $$defs{"local_path"};
-                print F "localPath=$locPath\n";
-                $udvalue = $$defs{"pattern"};
-                print F "pattern=$udvalue\n";
-#                $udvalue = $$defs{"product"};
-#                print F "product=$udvalue\n";
-
-                close(F);
-            }
-            $file = "$dire/parameters.rpl";
-            if(!-e $file){
-                open(F, ">$file");
-                print F <<"FILE_INPUT";
-# add any parameter definition in the form KEY=VALUE
-FILE_INPUT
-                close(F);
-            }
-            $file = "$dire/local.rpl";
-            if(!-e $file){
-                open(F, ">$file");
-                print F <<"FILE_INPUT";
-echo about to submit the processing pipeline to the grid
-qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
-FILE_INPUT
-                close(F);
-            }
-            $file = "$dire/parallel.rpl";
-            if(!-e $file){
-                open(F, ">$file");
-                print F <<"FILE_INPUT";
-assignto ftpResult command MONTY DOWNLOADER FTP_CONFIG $remPath $localPath $pattern
-if ftpResult eq Successful-ftp then
-    sexec touch DONE_TRACER
-else
-    sexec touch FAIL_TRACER
-endif
-FILE_INPUT
-                close(F);
-            }
-
-
-        } elsif($lt eq "ulftp"){
-            $atMost = 42;
-            $type = "ulftp";
-            $file = "$dire/${module}FtpDetails";
-#FTP_SITE=
-#USERNAME=
-#PASSWORD=
-#REMOTE_PATH=
-#LOCAL_PATH=
-#PROJECT=
-#PRODUCT=
-            # we need to create an ftp file
-            if(!-e $file){
-                open(F, ">$file");
-                $udvalue = $$defs{"ftp_site"};
-                print F "ftpsite=$udvalue\n";
-                $udvalue = $$defs{"username"};
-                print F "uname=$udvalue\n";
-                $udvalue = $$defs{"password"};
-                print F "pwd=$udvalue\n";
-                $remPath = $$defs{"remote_path"};
-                print F "remotePath=$remPath\n";
-                $localPath = $$defs{"local_path"};
-                print F "localPath=$localPath\n";
-                $pattern = $$defs{"pattern"};
-                print F "pattern=$pattern\n";
-#                $udvalue = $$defs{"product"};
-#                print F "product=$udvalue\n";
-
-                close(F);
-            }
-            $file = "$dire/parameters.rpl";
-            if(!-e $file){
-                open(F, ">$file");
-                print F <<"FILE_INPUT";
-# add any parameter definition in the form KEY=VALUE
-FILE_INPUT
-                close(F);
-            }
-            $file = "$dire/local.rpl";
-            if(!-e $file){
-                open(F, ">$file");
-                print F <<"FILE_INPUT";
-echo about to submit the processing pipeline to the grid
-qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
-FILE_INPUT
-                close(F);
-            }
-            $file = "$dire/parallel.rpl";
-            if(!-e $file){
-                open(F, ">$file");
-                print F <<"FILE_INPUT";
-assignto ftpResult command MONTY UPLOADER FTP_CONFIG $localPath $remPath $pattern
-if ftpResult eq Successful-ftp then
-    sexec touch DONE_TRACER
-else
-    sexec touch FAIL_TRACER
-endif
-FILE_INPUT
-                close(F);
-            }
-
-        } elsif($lt eq "rsync"){
-            $atMost = 12;
-            $type = "rsync";
-            $source_path = $$defs{"source_path"};
-            $dest_path = $$defs{"dest_path"};
-            $pattern = $$defs{"pattern"};
-            $rsync_flags = $$defs{"rsync-flags"};
-            $file = "$dire/parameters.rpl";
-            if(!-e $file){
-                open(F, ">$file");
-                print F <<"FILE_INPUT";
-# add any parameter definition in the form KEY=VALUE
-FILE_INPUT
-                close(F);
-            }
-            $file = "$dire/local.rpl";
-            if(!-e $file){
-                open(F, ">$file");
-                $_ = $dest_path;
-                if(!/\@/){
-                    $mkdirifneeded = "sexec mkdir -p $dest_path";
-                } else {
-                    $mkdirifneeded = "";
-                }
-                print F <<"FILE_INPUT";
-echo about to start rsync from the main nodes
-$mkdirifneeded
-sexec X_WRAPPER "rsync $rsync_flags --include $pattern $source_path $dest_path" DONE_TRACER &
-# uncomment the next line if you can run rsync from the nodes
-# qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave
-FILE_INPUT
-                close(F);
-            }
-            $file = "$dire/parallel.rpl";
-            if(!-e $file){
-                open(F, ">$file");
-                print F <<"FILE_INPUT";
-sexec X_WRAPPER "rsync $rsync_flags --include $pattern $source_path $dest_path" DONE_TRACER &
-
-#if rsyncResult eq Successful-rsync then
+#
+#
+#        } elsif($lt eq "spwn"){
+#            # similar to process but processes are spawned to the shell
+#            # rather than to a parallel system. Nothing prevents a parallel
+#            # system to use this procedure.
+#            $type = "spwn";
+#            $file = "$dire/parameters.rpl";
+#            if(!-e $file){
+#                open(F, ">$file");
+#print "BasePath = $basePath\n";
+#                print F <<"FILE_INPUT";
+#HISTORY_DIR = $historyPath
+#DAILY_PATH = HISTORY_DIR/YYY/SMM/SDD
+#FILE_INPUT
+#                close(F);
+#            }
+#            $file = "$dire/local.rpl";
+#            if(!-e $file){
+#                open(F, ">$file");
+#                print F <<"FILE_INPUT";
+#echo about to submit the processing pipeline as a background job if possible
+#sexec NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
+#FILE_INPUT
+#                close(F);
+#            }
+##            $file = "$dire/in_parallel.rpl";
+##            if(!-e $file){
+##                open(F, ">$file");
+##                print F <<"FILE_INPUT";
+##echo  Preparing for task TASK_ID
+### The following line is an example only, but you may need to change
+### non-standard fields in the control file
+###exec FLEX_MAKE_CONTROL TEMPLATE_CONTROL selected_year=YYY selected_month=SMM selected_day=SDD > CONTROL_FILE
+##exec MAKE_CONTROL TEMPLATE_CONTROL YYY-SMM-SDD > CONTROL_FILE
+##sexec PROCESSOR < CONTROL_FILE > LOG_FILE
+##assignto hasDone command EXAMINE_DONE LOG_FILE -z
+##if hasDone gt 0 then
+##    sexec touch DONE_TRACER
+##    sexec rm CONTROL_FILE
+##    # uncomment next line to compress the log-file
+##    # sexec gzip LOG_FILE
+##    # if you never need them, get rid of the log-file
+##    # sexec rm LOG_FILE
+##    # sexec touch DONE_TRACER
+##else
+##    sexec touch FAIL_TRACER
+##endif
+##
+##FILE_INPUT
+##                close(F);
+##            }
+#
+#
+#
+#            # dealing with a control file to be used with the command. Too
+#            # much GT driven, in general, we don't know what the user will
+#            # do. Not deleting the lines as they come useful later on.
+#
+##            $udvalue = $$defs{"template_control_file"};
+##            if(!-e $udvalue){
+##                die "$udvalue does not exist. Fix before going ahead\n";
+##            }
+##            system("cp $udvalue $dire");
+##            $file = "$dire/PROCESSOR";
+##            if(!-e $file){
+##                open(F, ">$file");
+##                $udvalue = $$defs{"processor"};
+##                if($udvalue =~ /^\//){
+##                    $proc = "$udvalue";
+##                } else {
+##                    $proc = "$basePath/SOFTWARE/FORTRAN/INTERNAL_CODE/BIN/$udvalue";
+##                }
+##                print F "$proc\n";
+##                close(F);
+##            }
+#
+#
+#        } elsif($lt eq "dqc"){
+#            $type = "dqc";
+#            $file = "$dire/parameters.rpl";
+#            if(!-e $file){
+#                open(F, ">$file");
+#                $udvalue = $$defs{"product_code"};
+#                $udbasePath = $$defs{"base_path"};
+#                print F <<"FILE_INPUT";
+#HISTORY_DIR = $historyPath
+#DAILY_PATH = HISTORY_DIR/YYY/SMM/SDD
+#PRODUCT_CODE = $udvalue
+#PATH_TO_PRODUCT = $udbasePath
+#LOG_FILE = DAILY_PATH/verify_PRODUCT_CODE_YYY_SMM_SDD.log
+#FILE_INPUT
+#                close(F);
+#            }
+#            $file = "$dire/local.rpl";
+#            if(!-e $file){
+#                open(F, ">$file");
+#                print F <<"FILE_INPUT";
+#qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
+#FILE_INPUT
+#                close(F);
+#            }
+#            $file = "$dire/in_parallel.rpl";
+#            if(!-e $file){
+#                open(F, ">$file");
+#                print F <<"FILE_INPUT";
+## Make sure the history directory for the day is created. PFO. 2017-06-18
+#mkdir DAILY_PATH
+#
+#sexec MONTY VERIFIER PATH_TO_PRODUCT/YYY/SMM/SDD/PRODUCT_CODE  > LOG_FILE
+#sexec touch DONE_TRACER
+#FILE_INPUT
+#                close(F);
+#            }
+#
+#
+#
+#
+#        } elsif($lt eq "dlftp"){
+#            $atMost = 42;
+#            $type = "dlftp";
+#            $file = "$dire/${module}FtpDetails";
+##FTP_SITE=
+##USERNAME=
+##PASSWORD=
+##REMOTE_PATH=
+##LOCAL_PATH=
+##PROJECT=
+##PRODUCT=
+#            # we need to create an ftp file
+#            if(!-e $file){
+#                open(F, ">$file");
+#                $udvalue = $$defs{"ftp_site"};
+#                print F "ftpsite=$udvalue\n";
+#                $udvalue = $$defs{"username"};
+#                print F "uname=$udvalue\n";
+#                $udvalue = $$defs{"password"};
+#                print F "pwd=$udvalue\n";
+#                $remPath = $$defs{"remote_path"};
+#                print F "remotePath=$remPath\n";
+#                $locPath = $$defs{"local_path"};
+#                print F "localPath=$locPath\n";
+#                $udvalue = $$defs{"pattern"};
+#                print F "pattern=$udvalue\n";
+##                $udvalue = $$defs{"product"};
+##                print F "product=$udvalue\n";
+#
+#                close(F);
+#            }
+#            $file = "$dire/parameters.rpl";
+#            if(!-e $file){
+#                open(F, ">$file");
+#                print F <<"FILE_INPUT";
+## add any parameter definition in the form KEY=VALUE
+#FILE_INPUT
+#                close(F);
+#            }
+#            $file = "$dire/local.rpl";
+#            if(!-e $file){
+#                open(F, ">$file");
+#                print F <<"FILE_INPUT";
+#echo about to submit the processing pipeline to the grid
+#qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
+#FILE_INPUT
+#                close(F);
+#            }
+#            $file = "$dire/in_parallel.rpl";
+#            if(!-e $file){
+#                open(F, ">$file");
+#                print F <<"FILE_INPUT";
+#assignto ftpResult command MONTY DOWNLOADER FTP_CONFIG $remPath $localPath $pattern
+#if ftpResult eq Successful-ftp then
 #    sexec touch DONE_TRACER
 #else
 #    sexec touch FAIL_TRACER
 #endif
-FILE_INPUT
-                close(F);
-            }
-
-
-        } elsif($lt eq "dxst"){
-            $type = "dxst";
-            $file = "$dire/parameters.rpl";
-            $udfile_pattern = $$defs{"file_pattern"};
-            $uddata_path = $$defs{"data_path"};
-            $udtracer = $$defs{"tracer_file"};
-            if(!-e $file){
-                open(F, ">$file");
-                print F <<"FILE_INPUT";
-#PATH_TO_DATA = /data/atsr/S3MPC/YYY/SMM/SDD/SL_2_LST
-#DATA_TRACER = daily_data_in
-PATH_TO_DATA = $uddata_path
-FILE_PATTERN = $udfile_pattern
-DATA_TRACER = $udtracer
-
-FILE_INPUT
-                close(F);
-            }
-            $file = "$dire/local.rpl";
-            if(!-e $file){
-                open(F, ">$file");
-                print F <<"FILE_INPUT";
-assignto hasData command GET_PATH_CONTENT path=$uddata_path fp=$udfile_pattern dt=$udtracer -count
-if hasData gt 0 then
-    sexec touch DONE_TRACER
-else
-    sexec touch FAIL_TRACER
-endif
-FILE_INPUT
-                close(F);
-            }
-            $file = "$dire/parallel.rpl";
-            if(!-e $file){
-                open(F, ">$file");
-                print F <<"FILE_INPUT";
-FILE_INPUT
-                close(F);
-            }
-
-
-
-        } elsif($lt eq "ud"){
-            $file = "$dire/parameters.rpl";
-            if(!-e $file){
-                open(F, ">$file");
-                print F <<"FILE_INPUT";
-FILE_INPUT
-                close(F);
-            }
-            $file = "$dire/local.rpl";
-            if(!-e $file){
-                open(F, ">$file");
-                print F <<"FILE_INPUT";
-echo about to submit the processing pipeline to the grid
-qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
-FILE_INPUT
-                close(F);
-            }
-            $file = "$dire/parallel.rpl";
-            if(!-e $file){
-                open(F, ">$file");
-                print F <<"FILE_INPUT";
-FILE_INPUT
-                close(F);
-            }
-            $type = "udef";
-        }
-        print "${module}: $trest $wall $mmem $atMost ${type}_$module $dep\n";
-        print "${type}_$module = runPipeline $module DATE\n\n";
-
-        # Now, we should invoke the AP_createTM_pipefiles and feed it
-        # the right parameters
-        #
-        # first, chdir to $dire and back to $cwd when finished.
-        
-        chdir($dire);
-        $wally = $$defs{"maxwalltime"};
-        $memy = $$defs{"maxmemory"};
-        system("$mkplfiles parameters.rpl local.rpl parallel.rpl $wally $memy");
-        chdir($cwd);
-    }
-
-
+#FILE_INPUT
+#                close(F);
+#            }
+#
+#
+#        } elsif($lt eq "ulftp"){
+#            $atMost = 42;
+#            $type = "ulftp";
+#            $file = "$dire/${module}FtpDetails";
+##FTP_SITE=
+##USERNAME=
+##PASSWORD=
+##REMOTE_PATH=
+##LOCAL_PATH=
+##PROJECT=
+##PRODUCT=
+#            # we need to create an ftp file
+#            if(!-e $file){
+#                open(F, ">$file");
+#                $udvalue = $$defs{"ftp_site"};
+#                print F "ftpsite=$udvalue\n";
+#                $udvalue = $$defs{"username"};
+#                print F "uname=$udvalue\n";
+#                $udvalue = $$defs{"password"};
+#                print F "pwd=$udvalue\n";
+#                $remPath = $$defs{"remote_path"};
+#                print F "remotePath=$remPath\n";
+#                $localPath = $$defs{"local_path"};
+#                print F "localPath=$localPath\n";
+#                $pattern = $$defs{"pattern"};
+#                print F "pattern=$pattern\n";
+##                $udvalue = $$defs{"product"};
+##                print F "product=$udvalue\n";
+#
+#                close(F);
+#            }
+#            $file = "$dire/parameters.rpl";
+#            if(!-e $file){
+#                open(F, ">$file");
+#                print F <<"FILE_INPUT";
+## add any parameter definition in the form KEY=VALUE
+#FILE_INPUT
+#                close(F);
+#            }
+#            $file = "$dire/local.rpl";
+#            if(!-e $file){
+#                open(F, ">$file");
+#                print F <<"FILE_INPUT";
+#echo about to submit the processing pipeline to the grid
+#qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
+#FILE_INPUT
+#                close(F);
+#            }
+#            $file = "$dire/in_parallel.rpl";
+#            if(!-e $file){
+#                open(F, ">$file");
+#                print F <<"FILE_INPUT";
+#assignto ftpResult command MONTY UPLOADER FTP_CONFIG $localPath $remPath $pattern
+#if ftpResult eq Successful-ftp then
+#    sexec touch DONE_TRACER
+#else
+#    sexec touch FAIL_TRACER
+#endif
+#FILE_INPUT
+#                close(F);
+#            }
+#
+#        } elsif($lt eq "rsync"){
+#            $atMost = 12;
+#            $type = "rsync";
+#            $source_path = $$defs{"source_path"};
+#            $dest_path = $$defs{"dest_path"};
+#            $pattern = $$defs{"pattern"};
+#            $rsync_flags = $$defs{"rsync-flags"};
+#            $file = "$dire/parameters.rpl";
+#            if(!-e $file){
+#                open(F, ">$file");
+#                print F <<"FILE_INPUT";
+## add any parameter definition in the form KEY=VALUE
+#FILE_INPUT
+#                close(F);
+#            }
+#            $file = "$dire/local.rpl";
+#            if(!-e $file){
+#                open(F, ">$file");
+#                $_ = $dest_path;
+#                if(!/\@/){
+#                    $mkdirifneeded = "sexec mkdir -p $dest_path";
+#                } else {
+#                    $mkdirifneeded = "";
+#                }
+#                print F <<"FILE_INPUT";
+#echo about to start rsync from the main nodes
+#$mkdirifneeded
+#sexec X_WRAPPER "rsync $rsync_flags --include $pattern $source_path $dest_path" DONE_TRACER &
+## uncomment the next line if you can run rsync from the nodes
+## qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave
+#FILE_INPUT
+#                close(F);
+#            }
+#            $file = "$dire/in_parallel.rpl";
+#            if(!-e $file){
+#                open(F, ">$file");
+#                print F <<"FILE_INPUT";
+#sexec X_WRAPPER "rsync $rsync_flags --include $pattern $source_path $dest_path" DONE_TRACER &
+#
+##if rsyncResult eq Successful-rsync then
+##    sexec touch DONE_TRACER
+##else
+##    sexec touch FAIL_TRACER
+##endif
+#FILE_INPUT
+#                close(F);
+#            }
+#
+#
+#        } elsif($lt eq "dxst"){
+#            $type = "dxst";
+#            $file = "$dire/parameters.rpl";
+#            $udfile_pattern = $$defs{"file_pattern"};
+#            $uddata_path = $$defs{"data_path"};
+#            $udtracer = $$defs{"tracer_file"};
+#            if(!-e $file){
+#                open(F, ">$file");
+#                print F <<"FILE_INPUT";
+##PATH_TO_DATA = /data/atsr/S3MPC/YYY/SMM/SDD/SL_2_LST
+##DATA_TRACER = daily_data_in
+#PATH_TO_DATA = $uddata_path
+#FILE_PATTERN = $udfile_pattern
+#DATA_TRACER = $udtracer
+#
+#FILE_INPUT
+#                close(F);
+#            }
+#            $file = "$dire/local.rpl";
+#            if(!-e $file){
+#                open(F, ">$file");
+#                print F <<"FILE_INPUT";
+#assignto hasData command GET_PATH_CONTENT path=$uddata_path fp=$udfile_pattern dt=$udtracer -count
+#if hasData gt 0 then
+#    sexec touch DONE_TRACER
+#else
+#    sexec touch FAIL_TRACER
+#endif
+#FILE_INPUT
+#                close(F);
+#            }
+#            $file = "$dire/in_parallel.rpl";
+#            if(!-e $file){
+#                open(F, ">$file");
+#                print F <<"FILE_INPUT";
+#FILE_INPUT
+#                close(F);
+#            }
+#
+#
+#
+#        } elsif($lt eq "ud"){
+#            $file = "$dire/parameters.rpl";
+#            if(!-e $file){
+#                open(F, ">$file");
+#                print F <<"FILE_INPUT";
+#FILE_INPUT
+#                close(F);
+#            }
+#            $file = "$dire/local.rpl";
+#            if(!-e $file){
+#                open(F, ">$file");
+#                print F <<"FILE_INPUT";
+#echo about to submit the processing pipeline to the grid
+#qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
+#FILE_INPUT
+#                close(F);
+#            }
+#            $file = "$dire/in_parallel.rpl";
+#            if(!-e $file){
+#                open(F, ">$file");
+#                print F <<"FILE_INPUT";
+#FILE_INPUT
+#                close(F);
+#            }
+#            $type = "udef";
+#        }
+#        print "${module}: $trest $wall $mmem $atMost ${type}_$module $dep\n";
+#        print "${type}_$module = runPipeline $module DATE\n\n";
+#
+#        # Now, we should invoke the AP_createTM_pipefiles and feed it
+#        # the right parameters
+#        #
+#        # first, chdir to $dire and back to $cwd when finished.
+#        
+#        chdir($dire);
+#        $wally = $$defs{"maxwalltime"};
+#        $memy = $$defs{"maxmemory"};
+#        system("$mkplfiles parameters.rpl local.rpl in_parallel.rpl $wally $memy");
+#        chdir($cwd);
+#    }
 }
 
 sub make_td_file(){
@@ -1820,7 +1826,8 @@ $tn.parameters.end
 $tn.$tagLocal.begin
 # you can edit lines below this one
 echo about to submit the processing pipeline to the grid
-qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
+#crapola qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
+$tagSubmit
 # you can edit lines above this one
 $tn.$tagLocal.end
 
@@ -1913,9 +1920,16 @@ $argstodef# you should've edited the lines above this one
 $tn.parameters.end
 
 $tn.$tagParallel.begin
-
+sexec touch RNNG_TRACER
 # you can edit lines below this one
 $linestorun# you can edit lines above this one
+
+assignto hasDone command EXAMINE_DONE LOG_FILE -z
+if hasDone gt 0 then
+    sexec touch DONE_TRACER
+else
+    sexec touch FAIL_TRACER
+endif
 
 $tn.$tagParallel.end
 FF_FILE
@@ -1934,14 +1948,19 @@ FF_FILE
 $tn.atMochat=*
 $tn.parameters.begin
 # you can edit lines below this one
-$pipeparams
+$pipeparams# you can edit lines above this one
+
+# arguments for $blockName
+# you should edit the lines below this one
+$argstodef# you should've edited the lines above this one
 # you can edit lines above this one
 $tn.parameters.end
 
 $tn.$tagLocal.begin
 # you can edit lines below this one
 echo about to submit the processing pipeline to the grid
-qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
+#crapola qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
+$tagSubmit
 # you can edit lines above this one
 $tn.$tagLocal.end
 
@@ -2067,7 +2086,8 @@ $tn.parameters.end
 $tn.$tagLocal.begin
 # you can edit lines below this one
 echo about to submit the processing pipeline to the grid
-qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
+#crapola qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
+$tagSubmit
 # you can edit lines above this one
 $tn.$tagLocal.end
 
@@ -2123,7 +2143,8 @@ LOG_FILE = DAILY_PATH/verify_PRODUCT_CODE_YYY_SMM_SDD.log
 $tn.parameters.end
 
 $tn.$tagLocal.begin
-qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
+#crapola qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
+$tagSubmit
 $tn.$tagLocal.end
 
 $tn.$tagParallel.begin
@@ -2164,7 +2185,8 @@ $tn.parameters.end
 
 $tn.$tagLocal.begin
 echo about to submit the processing pipeline to the grid
-qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
+#crapola qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
+$tagSubmit
 $tn.$tagLocal.end
 
 $tn.$tagParallel.begin
@@ -2205,7 +2227,8 @@ $tn.parameters.end
 
 $tn.$tagLocal.begin
 echo about to submit the processing pipeline to the grid
-qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
+#crapola qsub NOWAIT RUNPIPELINE thisPipe YYY-SMM-SDD -exec -slave CL_VARIABLES
+$tagSubmit
 $tn.$tagLocal.end
 
 $tn.$tagParallel.begin
