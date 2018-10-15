@@ -1907,7 +1907,7 @@ sub bbud(){
     }
     if($tagLocal eq "ignore"){
         print FF <<"FF_FILE";
-$tn.atMochtung=*
+$tn.atMost=*
 
 $tn.parameters.begin
 # you can edit lines below this one
@@ -1945,7 +1945,7 @@ FF_FILE
 
     } else {
         print FF <<"FF_FILE";
-$tn.atMochat=*
+$tn.atMost=*
 $tn.parameters.begin
 # you can edit lines below this one
 $pipeparams# you can edit lines above this one

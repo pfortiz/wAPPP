@@ -2109,7 +2109,7 @@ for( $tt = 0; $tt < $nTasks; $tt++){
         if($DELAY eq "WAIT"){
             print S "$tStepsShrt\ntouch $marker\n";
         } else {
-            print S "$tStepsShrt &\n";
+            print S "$tStepsShrt &\npipePid=\$!\necho \$pipePid\n";
         }
         close(S);
         if($execute == 1){

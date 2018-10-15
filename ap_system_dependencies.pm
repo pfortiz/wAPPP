@@ -240,19 +240,21 @@ sub getNavailableProcesses(){
 sub getRunningJobIds(){
     my (%dict) = @_;
     my $site = $dict{"site"};
-    print "Utilizing site: $site\n";
 
-    my %runningJobs;
     my $qquery = $dict{"qquery"};
+    print "Utilizing site: $site\n";
+    print "qquery($site): $qquery\n";
+    my $pwd = `pwd`;
+    print "Current working directory: $pwd\n";
     my @errorFiles;
     my %errorsById;
     my %logsById;
     my %runningJobs;
 
-    open(Q, "$qquery | ");
     my $nJobsRunning = 0;
     my (@jobs, $jid, $status, @lepath, $eid, $oid);
     if($site eq "UOL"){
+        open(Q, "$qquery | ");
         $_ = <Q>;       # dummy line
         $_ = <Q>;       # dummy line
         while(<Q>){
@@ -288,6 +290,7 @@ sub getRunningJobIds(){
         close(E);
         
     } elsif($site eq "CEMS"){
+        open(Q, "$qquery | ");
         # this needs fixing...
         $_ = <Q>;       # dummy line
         $_ = <Q>;       # dummy line
@@ -324,9 +327,11 @@ sub getRunningJobIds(){
         close(E);
         
     } elsif($site eq "CTCP"){
+        open(Q, "$qquery | ");
         # Totally pending...
 
     } elsif($site eq "UOS"){
+        open(Q, "$qquery | ");
         # I still don't know how this is handled here. I will assume that
         # this is like in the UOL case, ie, JobID.e and JOBID.o
         $_ = <Q>;       # dummy line
@@ -364,9 +369,10 @@ sub getRunningJobIds(){
         close(E);
     } elsif($site eq "nonParallel"){
         # In this case there is nothing to query as there is no queue being
-        # submitted.  The question is then, what to we return?
+        # submitted.  The question is then, what do we return?
         # how do we get the PID of submitted jobs? Unless we submit them in
         # the background, then there is no point in checking them.
+        print "Non-parallel case.\n";
     }
     close(Q);
 }

@@ -68,13 +68,17 @@ sub validateTask(){
 }
  
 sub locateTBlegos(){
-    my $pPath = @_[0];
-    my %legos = {};
+#    my $pPath = @_[0];
+    my $pPath = shift;
+    my $pipaPath = shift;
+    if ($pipaPath eq ""){ $pipaPath = "."; }
+
+    my %legos;
     my @pp;
 #    print "LEGOS in $pPath\n";
     open(P, "ls $pPath|");
     while(<P>){
-        if(/TB_/){
+        if(/^TB_/){
 #            print "LEGO found: $_\n";
             chop;
             $legos{$_} = "$pPath/$_";
@@ -83,7 +87,7 @@ sub locateTBlegos(){
     # addition on October 10, 2018 to account for the fact that TBlegos
     # could be located in different paths, and these paths are listed in
     # the AP_project file in the current directory.
-    open(AP, "<AP_project");
+    open(AP, "< $pipaPath/AP_project");
     while(<AP>){
         if(/tbPaths/){
             chop;
@@ -96,7 +100,7 @@ sub locateTBlegos(){
                     while(<P>){
                         if(/TB_/){
                             chop;
-                            print "LEGO found: $_\n";
+#                            print "LEGO found: $_\n";
                             $legos{$_} = "$pPath/$_";
                         }
                     }
