@@ -330,6 +330,7 @@ while(<B>){
     }
     print DP "$_\n";
 }
+print DP "delete RNNG_TRACER\n";
 close(B);
 close(DP);
 

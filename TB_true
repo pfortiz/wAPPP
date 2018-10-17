@@ -1,0 +1,134 @@
+#!/usr/bin/env python
+# Written for python 2.x, not 3.x
+
+# This task-block (TB) is intended to always produce a true response in
+# order to test the pipelines, it does nothing else
+import sys
+import os
+
+# add whatever other package you need here
+
+# function to write the status to either a file or stdout
+# 'DONE' must be part of the status line for a successful execution
+# 'DONE' must be absent when a failure occurs
+# 'FAIL' shall be present when a failure occurs
+def logStatus(line):
+    # The script shall produce some information when it has concluded
+    # correctly writing to 'statusFile' or stdout if statusFile is not present
+    oFileName = argDict["statusFile"]
+    if oFileName != "stdout":
+        ofile = open(oFileName, "w+")
+        ofile.write(line+"\n")
+        ofile.close()
+    else:
+        print line
+    sys.exit()
+
+nargs = len(sys.argv)
+me = sys.argv[0]
+myself = me.split("/")[-1]
+# no Irene
+
+#print me
+#print myself
+
+# basic parameters
+# These parameters MUST be part of the API
+basicParameters = {
+    "statusFile":{"default":"stdout",
+                  "pipeVal":"stdout",
+                  "meaning":"File where a status line is written"},
+    }
+# your own parameters
+# any parameter with default == None is treated as mandatory
+parameters = {
+    "date":{"default":None,
+            "pipeVal":"TODAY",
+            "meaning":"Date to apply for the processing"},
+#    "inputFile":{"default":None,
+#            "pipeVal":"RAW_DIR/DAILY_PATH/YYY_SMM_SDD_PQsensors.txt",
+#            "meaning":"Input file"},
+#    "action":{"default":"purge",
+#            "pipeVal":"append",
+#            "meaning":"apply the purge method"},
+#    "executable":{"default":me, "meaning":"Name of this executable file"},
+}
+
+argDict = {}
+inputs = []
+for p in basicParameters.keys():
+        argDict[p] =  basicParameters[p]["default"]
+        inputs.append("{}={}".format(p,  basicParameters[p]["pipeVal"]))
+for p in parameters.keys():
+        argDict[p] =  parameters[p]["default"]
+        inputs.append("{}={}".format(p,  parameters[p]["pipeVal"]))
+
+pipeParams = [
+#        "HISTORY_DIR = /Users/pfo/AP_HISTORY",
+#        "RAW_DIR = /path/to/raw-data",
+#        "COOKED_DIR = /path/to/processed-data",
+        "DAILY_PATH = YYY/SMM/SDD",
+        "DAILY_NAME = YYY_SMM_SDD"
+#        "DAILY_PATH = HISTORY_DIR/YYY/SMM/SDD"
+        ]
+
+linesToRun = [
+#        "sexec {} THE_ARGUMENTS >> /dev/null".format(me),
+        "sexec touch DONE_TRACER",
+#        "delete RNNG_TRACER",
+        ]
+
+#print argDict
+
+for a in sys.argv[1:]:
+    try:
+        pp = a.split("=")
+        argDict[pp[0]] = pp[1]
+    except:
+        argDict[a] = True
+#        print a
+
+# DESCRIPTION BLOCK, activated if the CL argument -describe is present
+if "-describe" in argDict:
+    for p in basicParameters.keys():
+        print p, basicParameters[p]["default"]
+    for p in parameters.keys():
+        print p, parameters[p]["default"]
+    sys.exit()
+
+if "-pipeParams" in argDict:
+    for p in pipeParams:
+        print p
+    sys.exit()
+
+if "-linesToRun" in argDict:
+    for p in linesToRun:
+        print p
+    sys.exit()
+
+# Verify that mandatory parameters are present 
+
+fail = "missing:"
+for p in argDict.keys():
+#    print p
+    if argDict[p] is None:
+        fail += " {}".format(p)
+
+# Note that on failing (whatever the reason) the correct action is to call 
+# logStatus, which exits the execution
+
+if fail != "missing:":
+    msg = "FAIL: Arguments {}".format(fail)
+    logStatus(msg)
+
+# The execution block. Do whatever you need to do.
+
+
+# The pipeline software does require and ending message saying that the
+# operation was successful or if it fails
+# 'DONE' must be part of the status line for a successful execution
+# 'DONE' must be absent when a failure occurs
+# 'FAIL' shall be present when a failure occurs
+statusLine = "DONE with always flying colours"
+logStatus(statusLine)
+

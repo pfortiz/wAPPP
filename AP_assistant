@@ -67,7 +67,7 @@ print "Number of available processes: $navail\n";
 
 %legos = &locateTBlegos($legoPath);
 
-@rj = &getRunningJobIds(%apDict);
+#@rj = &getRunningJobIds(%apDict);
 
 
 # the next script is invoked to create the first versions of the pipeline

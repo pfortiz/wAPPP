@@ -68,7 +68,7 @@ sub createRc(){
 
     my ($site, $history, $basePath, $exec_path, $tctl_path, $bundlePath);
     my ($qtag, $pythonx, $qsubmit, $qdelete, $qquery, $err_memory);
-    my ($err_walltime, $machine, $parallel);
+    my ($err_walltime, $machine, $parallel, $nonParallelProcessingDirectory);
 
     $machine = `uname`;
     chop($machine);
@@ -152,6 +152,7 @@ sub createRc(){
         $qquery = "kstat";
         $err_memory = "Kein Memory";
         $err_walltime = "job killed after reaching LSF run time limit";
+        $nonParallelProcessingDirectory = "$home/wapppProcessing";
     }
 
 
@@ -209,6 +210,9 @@ python=$pythonx
 
 # the kind of machine this is running from:
 machine=$machine
+
+# For non-parallel systems
+processingDir = $nonParallelProcessingDirectory
 RUNPIPELINERC
     close(RC);
 }
@@ -237,8 +241,12 @@ sub getNavailableProcesses(){
 # system. Thoughts need to be given on how to treat non-parallel systems.
 
 # syntax: @arrayOfPointers = getRunningJobIds(%dict);
-sub getRunningJobIds(){
-    my (%dict) = @_;
+sub getRunningJobIdsPara(){
+    my (%dict) = shift;
+    my $errorFiles = shift;
+    my $errorsById = shift;
+    my $logsById = shift;
+    my $runningJobs = shift;
     my $site = $dict{"site"};
 
     my $qquery = $dict{"qquery"};
@@ -246,10 +254,6 @@ sub getRunningJobIds(){
     print "qquery($site): $qquery\n";
     my $pwd = `pwd`;
     print "Current working directory: $pwd\n";
-    my @errorFiles;
-    my %errorsById;
-    my %logsById;
-    my %runningJobs;
 
     my $nJobsRunning = 0;
     my (@jobs, $jid, $status, @lepath, $eid, $oid);
@@ -264,7 +268,7 @@ sub getRunningJobIds(){
             $status = $jobs[3];
 #            if($status ne "C"){
 #            }
-            $runningJobs{$jid} = 1;
+            $runningJobs->{$jid} = 1;
             $nJobsRunning++;
             print "QRJ: $jid\n";
         } 
@@ -275,16 +279,16 @@ sub getRunningJobIds(){
         while(<E>){
             chop;
             if(/\.e/){
-                push @errorFiles, $_;
+                push @$errorFiles, $_;
                 @lepath = split(/\.e/);
                 $eid = $lepath[1];
-                $errorsById{$eid} = $_;
+                $errorsById->{$eid} = $_;
 
 #                print "Error file: $_\n";
             } elsif (/\.o/){
                 @lepath = split(/\.o/);
                 $oid = $lepath[1];
-                $logsById{$oid} = $_;
+                $logsById->{$oid} = $_;
             }
         }
         close(E);
@@ -301,7 +305,7 @@ sub getRunningJobIds(){
             $status = $jobs[3];
 #            if($status ne "C"){
 #            }
-            $runningJobs{$jid} = 1;
+            $runningJobs->{$jid} = 1;
             $nJobsRunning++;
             print "QRJ: $jid\n";
         } 
@@ -312,16 +316,16 @@ sub getRunningJobIds(){
         while(<E>){
             chop;
             if(/\.e/){
-                push @errorFiles, $_;
+                push @$errorFiles, $_;
                 @lepath = split(/\.err/);
                 $eid = $lepath[0];
-                $errorsById{$eid} = $_;
+                $errorsById->{$eid} = $_;
 
 #                print "Error file: $_\n";
             } elsif (/\.l/){
                 @lepath = split(/\.log/);
                 $oid = $lepath[0];
-                $logsById{$oid} = $_;
+                $logsById->{$oid} = $_;
             }
         }
         close(E);
@@ -343,7 +347,7 @@ sub getRunningJobIds(){
             $status = $jobs[3];
 #            if($status ne "C"){
 #            }
-            $runningJobs{$jid} = 1;
+            $runningJobs->{$jid} = 1;
             $nJobsRunning++;
             print "QRJ: $jid\n";
         } 
@@ -354,16 +358,16 @@ sub getRunningJobIds(){
         while(<E>){
             chop;
             if(/\.e/){
-                push @errorFiles, $_;
+                push @$errorFiles, $_;
                 @lepath = split(/\.e/);
                 $eid = $lepath[1];
-                $errorsById{$eid} = $_;
+                $errorsById->{$eid} = $_;
 
 #                print "Error file: $_\n";
             } elsif (/\.o/){
                 @lepath = split(/\.o/);
                 $oid = $lepath[1];
-                $logsById{$oid} = $_;
+                $logsById->{$oid} = $_;
             }
         }
         close(E);

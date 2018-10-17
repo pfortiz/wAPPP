@@ -162,6 +162,10 @@ use ap_system_dependencies;
 use ap_predef;
 
 %apDict = &getFromRc($rcfile);
+foreach $_ (keys %apDict){
+    $$_ = $apDict{$_};
+}
+
 
 $waitTime = 60; # sleep time of 1 minute
 
@@ -210,9 +214,10 @@ USAGE
 }
 
 $killMe = "./kill_$me";
+$Iam = $$;
 open(K, ">$killMe");
 print K "# use: bash $killMe\n";
-print K "kill -9 $$\n";
+print K "kill -9 $Iam\n";
 close(K);
 
 @argos = @ARGV;
@@ -278,6 +283,8 @@ chop($basePath);
 
 #chop($basePath);
 %legos = &locateTBlegos($legoPath, $basePath);
+%pipeDefs = &getPipelineDefs($basePath);
+$projectName = $pipeDefs{"projectName"};
 
 $init = 0;
 if($otherargs eq "-init"){
@@ -300,7 +307,7 @@ $date = $datesToProcess;
 if(/time/){
     @LISTOFDATES = &getSpecialDates($datesToProcess);
     ($utcAt0000, $nSecsFromMidnight) = &getUTCat00();
-    $uTracer = "${nSecsFromMidnight}_$$";
+    $uTracer = "_${nSecsFromMidnight}_$Iam";
 } else {
     @LISTOFDATES = &getListOfDates($datesToProcess);
     $uTracer = "";
@@ -384,7 +391,6 @@ my ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) =
 # we should trace that we are starting the processing of this task
 $host = `hostname`;
 chop ($host);
-$pid = $$;
 $ltime = localtime;
 
 # This is the generic extraction of each of the tasks listed in the
@@ -393,14 +399,15 @@ $ltime = localtime;
 # these definitions as a function of $defs make little sense as the defs
 # dictionary has not been initialised yet, they should go after we read the
 # .tm file
-$topDir = $defs{"processingDir"};
+$topDir = $apDict{"processingDir"};
 if($topDir eq ""){
-    print "GLITCH: $basePath\n";
+    print "GLITCH: no defs[processingDir] $basePath\n";
     $topDir = $basePath;
 }
 
 $pipelinesDir = $defs{"pipelinesDir"};
 if($pipelinesDir eq ""){
+    print "GLITCH: no defs[pipelinesDir] $basePath\n";
     $pipelinesDir = "$basePath/pipelines";
 }
 
@@ -457,6 +464,11 @@ while(<P>){
     }
 }
 close(P);
+
+# DEBUG only:
+foreach $k (keys %defs){
+    print "defs[ $k ] = $defs{$k}\n";
+}
 
 #foreach $xl (@taskLines){ print "XL: $xl\n"; }
 #foreach $twd (keys %hasXdim){ print "$twd needs to open $hasXdim{$twd}\n"; }
@@ -752,12 +764,6 @@ print "Xdim: |@xDim|\n";
 # The second one is that upon successful completion, all the .o and .e
 # files get erased as part of the housekeeping procedures.
 
-$dotOdotE = "$topDir/dotO_dotEs";
-if(!-e $dotOdotE){
-    system ("mkdir -p -m 775 $dotOdotE");
-}
-chdir($dotOdotE);
-
 $ntimes = 0;
 
 # declaration of dictionaries used later as arguments.
@@ -773,7 +779,9 @@ print "dummy: $dummyRun\n";
 # branches instead of one with many conditionals
 if ($site eq "nonParallel"){
     print "Running on a non-parallel machine\n";
+    $jobsID{-32768} = -1;
     $myUID = $<;
+    $pipeName =~ s/.tm//;
     while(){
         # let's pick up the jobIds of all running jobs
         # I want to group all system dependent calls under one package rather
@@ -843,9 +851,6 @@ if ($site eq "nonParallel"){
             }
             print STDERR "Dealing with $dateToProcess\n";
 
-            ## artificially terminating the script
-            die "CurrentTime: $currentTime\n";
-    
     
     
         #     these quantities remain unchanged during the loop, and in fact,
@@ -864,15 +869,30 @@ if ($site eq "nonParallel"){
             $execsPath = $defs{"execsPath"};
             $pyexecsPath = $defs{"pythonExecsPath"};
             
-            $dailyDir = "$topDir/messages/$C_year/$C_smon/$C_smday";
-            $tracersDir = "$topDir/processingLogs";
+            # PFO Oktober 2018.
+            # I want a clean file structure to keep auxiliar files, not
+            # scattered all around
+            # I want a top-directory, then the date structure, followed by
+            # the task-name
+            $dateStruct = "$C_year/$C_smon/$C_smday";
+            $dailyDir = "$topDir/$dateStruct/$projectName";
+            $tracersDir = "$dailyDir/$Iam";
+            $dailyTracer = "$tracersDir/${projectName}_${DATE}.log";
+#            $dailyDir = "$topDir/messages/$C_year/$C_smon/$C_smday";
+#            $tracersDir = "$topDir/processingLogs";
+#            $dailyTracer = "$tracersDir/${DATE}_${projectName}.log";
+
+            print "Directories to make:\n";
+            print "dailyDir: $dailyDir\n";
+            print "tracersDir: $tracersDir\n";
+            print "file-dailyTracer: $dailyTracer\n";
+
             if(!-e $tracersDir){
                 system ("mkdir -p -m 775 $tracersDir");
             }
-            $dailyTracer = "$tracersDir/${DATE}_${pipeName}.log";
             if($tracingStarted{$dateToProcess} == 0){
                 open(L, ">>$dailyTracer");
-                print L "$DATE $host $pid $initialTime STARTED  $ltime\n";
+                print L "$DATE $host $Iam $initialTime STARTED  $ltime\n";
                 close(L);
                 $tracingStarted{$dateToProcess} = 1;
             }
@@ -889,6 +909,7 @@ if ($site eq "nonParallel"){
         
         #     this nPending is now defined for a given date
             $nPending{$dateToProcess} = 0;
+
             foreach $t (@tasks){
     
 #                $laxDim = "xd$t";
@@ -908,17 +929,27 @@ if ($site eq "nonParallel"){
                 shift(@tparts);
                 $spDims = join("", @tparts);
                 $addec = join(" ", @tparts);
-                $taskDone = "$dailyDir/$t$uTracer.Done";
-                $taskRunning = "$dailyDir/$t$uTracer.Running";
-                $taskFailed = "$dailyDir/$t$uTracer.Failed";
+#                $taskDone = "$tracersDir/$t$uTracer.Done";
+#                $taskRunning = "$tracersDir/$t$uTracer.Running";
+#                $taskFailed = "$tracersDir/$t$uTracer.Failed";
+                $taskDone = "$tracersDir/$t.Done";
+                $taskRunning = "$tracersDir/$t.Running";
+                $taskFailed = "$tracersDir/$t.Failed";
     
                 $ttracers = "DONE_TRACER=$taskDone ";
                 $ttracers .= "FAIL_TRACER=$taskFailed ";
-                $ttracers .= "RNNG_TRACER=$taskRunning";
+                $ttracers .= "RNNG_TRACER=$taskRunning ";
+                $ttracers .= "DEPO_PATH=$tracersDir";
                 $dask = "$t$dateToProcess$uTracer";
-                $tjid = $queueJob{$dask};
+                $tjid = $jobsIDs{$dask};
 #                print STDERR "Dask: $dask\n";
     
+#                print "DONE: $taskDone\n";
+#                print "FAIL: $taskFailed\n";
+#                print "RNNG: $taskRunning\n";
+                print "\n\ndask: $dask\n";
+                print "tjid: $tjid\n";
+
                 if($taskCompleted{$dask} == 1) { next; }
                 if($taskHasFailed{$dask} == 1) { next; }
     
@@ -934,24 +965,28 @@ if ($site eq "nonParallel"){
                     print "$taskStatus $dask KOMPLETT\n";
                     $taskCompleted{$dask} = 1;
                 #     task was completed, nothing to do... Next!!
-                #     Actually, we want to remove the error and log file
-                #     associated to this task...
-                    $efile = $errorsById{$tjid};
-                    $lfile = $logsById{$tjid};
-                #     of course, after seeing that this works, we can unlink
-                #     them
-                    if(-e $efile){
-                        print "unlink $errorsById{$tjid}\n";
-#                        unlink ($efile);
-                    }
-                    if(-e $lfile){
-                        print "unlink $logsById{$tjid}\n";
-#                        unlink ($lfile);
-                    }
+
+#                     Actually, we want to remove the error and log file
+#                     associated to this task...
+#                    $efile = $errorsById{$tjid};
+#                    $lfile = $logsById{$tjid};
+#                #     of course, after seeing that this works, we can unlink
+#                #     them
+#                    if(-e $efile){
+#                        print "unlink $errorsById{$tjid}\n";
+##                        unlink ($efile);
+#                    }
+#                    if(-e $lfile){
+#                        print "unlink $logsById{$tjid}\n";
+##                        unlink ($lfile);
+#                    }
+
                     $nActiveTasks{$t}--;
                     next;
                 } else {
-                    if($ntimes == 0){ print "$taskStatus $dask not completed\n";}
+                    if($ntimes == 0){
+                        print "$taskStatus $dask not completed\n";
+                    }
                     $totalPendingTasks++;
                     $nPending{$dateToProcess}++;
                 }
@@ -967,6 +1002,8 @@ if ($site eq "nonParallel"){
                 $rday = $dayOfMonth{$t};
                 $rmonth = $monthToRun{$t};
                 $dow = $dayOfWeek{$t};
+
+    
     
                 if($rday ne "*"){
                     if(int($rday) != int($X_mday) ){
@@ -1018,17 +1055,20 @@ if ($site eq "nonParallel"){
                 } else {
                     $nMissing = 0;
                 }
+
             
                 if($nMissing > 0){
-                    print "Dependencies not completed yet\n";
+                    print "Dependencies for $t not completed yet\n";
                 #     We can not proceed with this task, not all its dependencies
                 #     have finished... Next!!
                     next; 
+                } else {
+                    print STDERR "$t for $dateToProcess can be run\n";
                 }
     
             #     this needs daily dependency, as queueJobs are different for
             #     every day
-                $tjid = $queueJob{$dask};
+                $tjid = $jobsIDs{$dask};
                 if($twt{$dask} eq ""){
                     $twt{$dask} = $walltime{$t};
                 }
@@ -1051,70 +1091,72 @@ if ($site eq "nonParallel"){
 #                    $effMM = $mxm{$dask};
 #                }
                 
-                if($runningJobs{$tjid} == 1){
-                #     Happy, the job is running we need to do nothing... Next!
-                    print "$t running in parallel: $tjid\n";
-                    $jobRunning = 1;
-                    next;
-                } elsif($notInParallel{$dask} == 1){
-                    print "$t running as a child in parallel: $dask\n";
-                    $jobRunning = 1;
-                    next;
-                } else {
-                    $jobRunning = 0;
-                    print "job not found in the list of jobs\n";
-                #     job is neither running nor completed... in limbo
-                #     it could be the first time the manager is launched, in
-                #     which case, we need to proceed 
-                    if($ntimes > 0){
-                       $jn = $qjn{$dask};
-                       $memfail = 0;
-                       $wallfail = 0;
-                   #     let's locate its error file and try to infer what went
-                   #     wrong...
-                       foreach $_ (@errorFiles){
-                           if(/$jn/){
-                               print "elog: $jn $_\n";
-                               open(EF, "<$_");
-                               undef @efile;
-                               while(<EF>){
-                                   chop;
-                                   if(/$memoryFail/){
-                                       print "$_\n";
-                                       $memfail ++;
-                                   }
-                                   push @efile, $_;
-                               }
-                               close(EF);
-                               last;
-                           }
-                       }
-                   #     we need to figure out what's gone wrong.
-                       if($memfail > 0){
-                           $oldMM = $mxm{$dask};
-                           $mxm{$dask} = int($mxm{$dask} * 1.5);
-                           $effMM = $mxm{$dask};
-   #                        $effMM = $mxm{$dask} * (1 + $nexec{$dask} * 0.5);
-                           print "Increasing memory from $oldMM to $effMM\n";
-                       }
-                       if($wallfail > 0){
-                           $oldWT = $twt{$dask};
-   #                        $effWT = $twt{$dask} * (1 + $nexec{$dask} * 0.5);
-                           $twt{$dask} = $twt{$dask} * 1.5;
-                           $effWT = $twt{$dask};
-                           print "Increasing wallTime from $oldWT to $effWT\n";
-                       }
-                    
-                        if($memfail == 0 and $wallfail == 0){
-                            print "UNEXPECTED SITUATION. error file follows:\n";
-                            foreach $_ (@efile){
-                                print "$_\n";
-                            }
-                            print "About to resubmit. error file follows:\n";
-#                            $totalPendingTasks--;
-#                            $nPending{$dateToProcess}--;
-#                            next;
-                        }
+                if($tjid ne ""){
+                    if($runningJobs{$tjid} == 1){
+                    #     Happy, the job is running we need to do nothing... Next!
+                        print "$t running in parallel: $tjid\n";
+                        $jobRunning = 1;
+                        next;
+                    } elsif($notInParallel{$dask} == 1){
+                        print "$t running as a child in parallel: $dask\n";
+                        $jobRunning = 1;
+                        next;
+                    } else {
+                        $jobRunning = 0;
+                        print "job not found in the list of jobs\n";
+                    #     job is neither running nor completed... in limbo
+                    #     it could be the first time the manager is launched, in
+                    #     which case, we need to proceed 
+    #                    if($ntimes > 0){
+    #                       $jn = $qjn{$dask};
+    #                       $memfail = 0;
+    #                       $wallfail = 0;
+    #                   #     let's locate its error file and try to infer what went
+    #                   #     wrong...
+    #                       foreach $_ (@errorFiles){
+    #                           if(/$jn/){
+    #                               print "elog: $jn $_\n";
+    #                               open(EF, "<$_");
+    #                               undef @efile;
+    #                               while(<EF>){
+    #                                   chop;
+    #                                   if(/$memoryFail/){
+    #                                       print "$_\n";
+    #                                       $memfail ++;
+    #                                   }
+    #                                   push @efile, $_;
+    #                               }
+    #                               close(EF);
+    #                               last;
+    #                           }
+    #                       }
+    #                   #     we need to figure out what's gone wrong.
+    #                       if($memfail > 0){
+    #                           $oldMM = $mxm{$dask};
+    #                           $mxm{$dask} = int($mxm{$dask} * 1.5);
+    #                           $effMM = $mxm{$dask};
+    #   #                        $effMM = $mxm{$dask} * (1 + $nexec{$dask} * 0.5);
+    #                           print "Increasing memory from $oldMM to $effMM\n";
+    #                       }
+    #                       if($wallfail > 0){
+    #                           $oldWT = $twt{$dask};
+    #   #                        $effWT = $twt{$dask} * (1 + $nexec{$dask} * 0.5);
+    #                           $twt{$dask} = $twt{$dask} * 1.5;
+    #                           $effWT = $twt{$dask};
+    #                           print "Increasing wallTime from $oldWT to $effWT\n";
+    #                       }
+    #                    
+    #                        if($memfail == 0 and $wallfail == 0){
+    #                            print "UNEXPECTED SITUATION. error file follows:\n";
+    #                            foreach $_ (@efile){
+    #                                print "$_\n";
+    #                            }
+    #                            print "About to resubmit. error file follows:\n";
+    ##                            $totalPendingTasks--;
+    ##                            $nPending{$dateToProcess}--;
+    ##                            next;
+    #                        }
+    #                    }
                     }
     
                 }
@@ -1155,7 +1197,6 @@ if ($site eq "nonParallel"){
                 }
 #                print "\nCOMMANDO  = ", $commando;
                 $commando =~ s/DATE/$DATE/g;
-#                print "\nCOMMANDO2  = ", $commando;
                 if( $nActiveTasks{$t} >= $atMost{$t} ){
                 #     we can not launch this task, it exceeds max number
                 #     allowed
@@ -1166,6 +1207,8 @@ if ($site eq "nonParallel"){
                     print "Task $t $dask waiting for room to run\n";
                     next;
                 }
+
+#                print "\nCOMMANDO2  =  $commando\n";
                 if($commando =~ /runPipeline/){
 #                    print "PLP: $fullRunPipeline\n";
                     $commando =~ s/^runPipeline/$fullRunPipeline/;
@@ -1178,16 +1221,24 @@ if ($site eq "nonParallel"){
                     if(/^\//){
                         $dailyPl = $_;
                     } else {
+                        # nine, nine, nine!!!
+                        # Ja, Ja, Ja!!
                         $pldir = "$topDir/pipelines/$pname";
                         if(!-e $pldir){
                             system("mkdir -p -m 775 $pldir");
                         }
-                        $dailyPl = "$topDir/pipelines/$pname/$pname.main";
+#                        $dailyPl = "$pipelinesDir/pipelines/$pname/$pname.main";
+                        $dailyPl = "$pipelinesDir/$pname/$pname.main";
     #                    $pldir = "$pipelinesDir/$pname";
     #                    $dailyPl = "$pipelinesDir/$pname/$pname.main";
     #                    if(!-e $dailyPl){
     #                        system("touch $dailyPl");
     #                    }
+                    }
+                    if(!-e $dailyPl){
+                        die "We are in deep <beep>, non-existent $dailyPl\n";
+                    } else {
+                        print STDERR "Alles klar mit $dailyPl\n";
                     }
     
 #                    $runId = sprintf("-runid=r%03d", $nexec{$dask}+ 1);
@@ -1218,12 +1269,18 @@ if ($site eq "nonParallel"){
 #                    print "COMMANDO4  = ", $commando, "\n";
 #                    print "$taskStatus $t \@ $timo | $commando | $tusk\n";
     
+#                print "About to launch: $commando\n";
                     if(-e $dailyPl){
                         if($dummyRun == 0){
                             $processingOutput = `$commando`;
                             $nActiveTasks{$t}++;
                             $nexec{$dask}++;
+                            $jobId = $processingOutput;
+                            chop($jobId);
                             print "Launched $t\n$commando\n$processingOutput\n";
+                            print "JOB-ID: $dask $jobId\n";
+                            $jobsIDs{$dask} = $jobId;
+
     
     #     can we associate one or more jobIDs with this task at this point?
     #     Split processingOutput with \n, then examine each component
@@ -1232,7 +1289,8 @@ if ($site eq "nonParallel"){
 #                            @ptrs = &getProcessDict($processingOutput, $site, $dask, \%qjn, \%queueJob);
 #                            %qjn = %{$ptrs[0]};
 #                            %queueJob = %{$ptrs[1]};
-                            &getProcessDict($processingOutput, $site, $dask, \%qjn, \%queueJob);
+
+#                            &getProcessesIDs($processingOutput, $site, $dask, \%jobsIDs);
 #                            %qjn = %{$ptrs[0]};
 #                            %queueJob = %{$ptrs[1]};
     
@@ -1281,9 +1339,13 @@ if ($site eq "nonParallel"){
             if($nPending{$dateToProcess} == 0){
                 $ltime = localtime;
                 open(L, ">>$dailyTracer");
-                print L "$DATE $host $pid $initialTime FINISHED $ltime\n";
+                print L "$DATE $host $Iam $initialTime FINISHED $ltime\n";
                 close(L);
             }
+
+                print "von Pato was here\n";
+            ## artificially terminating the script
+            die "CurrentTime: $currentTime\n";
     
         } # end of @LISTOFDATES loop
 #        } # end of xDim loop
@@ -1296,7 +1358,7 @@ if ($site eq "nonParallel"){
         if($totalPendingTasks == 0){
 #            $ltime = localtime;
 #            open(L, ">>$dailyTracer");
-#            print L "$DATE $host $pid $initialTime FINISHED $ltime\n";
+#            print L "$DATE $host $Iam $initialTime FINISHED $ltime\n";
 #            close(L);
             last;
         } else {
@@ -1311,6 +1373,13 @@ if ($site eq "nonParallel"){
 
 
 } else {
+    # this is where the .o and .e files should go
+    $dotOdotE = "$topDir/dotO_dotEs";
+    if(!-e $dotOdotE){
+        system ("mkdir -p -m 775 $dotOdotE");
+    }
+    chdir($dotOdotE);
+
 
     print "Running on a parallel system\n";
 
@@ -1342,8 +1411,9 @@ if ($site eq "nonParallel"){
         $D_year += 1900; $D_mon += 1; $D_yday += 1;
         $D_smon = sprintf("%02d", $D_mon);
         $D_smday = sprintf("%02d", $D_mday);
-        $thms = sprintf("%02d%02d", $D_hour, $D_min);
-        $tod = &time_hms2dec($thms);
+        $thm = sprintf("%02d%02d", $D_hour, $D_min);
+        $thms = sprintf("%02d%02d%02d", $D_hour, $D_min, $D_sec);
+        $tod = &time_hms2dec($thm);
     
         # here we should insert the loop on LISTOFDATES, so that we examine the
         # tasks to be performed, missing, etc. for each of the dates.
@@ -1392,7 +1462,7 @@ if ($site eq "nonParallel"){
             $dailyTracer = "$tracersDir/${DATE}_${pipeName}.log";
             if($tracingStarted{$dateToProcess} == 0){
                 open(L, ">>$dailyTracer");
-                print L "$DATE $host $pid $initialTime STARTED  $ltime\n";
+                print L "$DATE $host $Iam $initialTime STARTED  $ltime\n";
                 close(L);
                 $tracingStarted{$dateToProcess} = 1;
             }
@@ -1428,9 +1498,9 @@ if ($site eq "nonParallel"){
                 shift(@tparts);
                 $spDims = join("", @tparts);
                 $addec = join(" ", @tparts);
-                $taskDone = "$dailyDir/$t$uTracer.Done";
-                $taskRunning = "$dailyDir/$t$uTracer.Running";
-                $taskFailed = "$dailyDir/$t$uTracer.Failed";
+                $taskDone = "$dailyDir/${t}$uTracer.Done";
+                $taskRunning = "$dailyDir/${t}$uTracer.Running";
+                $taskFailed = "$dailyDir/${t}$uTracer.Failed";
     
                 $ttracers = "DONE_TRACER=$taskDone ";
                 $ttracers .= "FAIL_TRACER=$taskFailed ";
@@ -1801,7 +1871,7 @@ if ($site eq "nonParallel"){
             if($nPending{$dateToProcess} == 0){
                 $ltime = localtime;
                 open(L, ">>$dailyTracer");
-                print L "$DATE $host $pid $initialTime FINISHED $ltime\n";
+                print L "$DATE $host $Iam $initialTime FINISHED $ltime\n";
                 close(L);
             }
     
@@ -1816,7 +1886,7 @@ if ($site eq "nonParallel"){
         if($totalPendingTasks == 0){
     #        $ltime = localtime;
     #        open(L, ">>$dailyTracer");
-    #        print L "$DATE $host $pid $initialTime FINISHED $ltime\n";
+    #        print L "$DATE $host $Iam $initialTime FINISHED $ltime\n";
     #        close(L);
             last;
         } else {
@@ -1828,10 +1898,10 @@ if ($site eq "nonParallel"){
     
         $ntimes++;
     }
-}
 
-# do some housekeeping: clean any .o and .e files created by this run
-chdir($dotOdotE);
+    # do some housekeeping: clean any .o and .e files created by this run
+    chdir($dotOdotE);
+}
 
 exit;
 
@@ -1941,6 +2011,7 @@ sub makeStubs(){
 
     foreach $_ (@tdfiles){
         $defs = "d_$_";  # this includes the ".td"
+        print "defs = $defs\n";
 
         $module = $$defs{"name"};
         $dep = $$defs{"dependencies"};

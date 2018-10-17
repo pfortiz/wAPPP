@@ -473,8 +473,8 @@ foreach $_ (@ARGV){
     } elsif($aname eq "-runid"){
         $clrunid = $avalue;
         $qrunid = "$_";
-        print "Emma, -runid =  $avalue $clrunid\n";
-        print "Emma: qrunid = $qrunid\n";
+#        print "Emma, -runid =  $avalue $clrunid\n";
+#        print "Emma: qrunid = $qrunid\n";
     } elsif(lc($aname) eq "-qresubmit"){
         $execute = $QRESUBMIT;
         $clWalltime = $avalue;
@@ -796,7 +796,9 @@ if($clrunid ne ""){
     $RUNID = "x0";
 }
 
-print "Emma, RUNID = $RUNID\n";
+#print STDERR "Emma, RUNID = $RUNID\n";
+#print STDERR "Emma, DONE_TRACER = $DONE_TRACER\n";
+#print STDERR "Emma, DEPO_PATH = $DEPO_PATH\n";
 
 $times = time;
 $times = "";
@@ -808,15 +810,24 @@ $site = $apDict{"site"};
 $qdelete = $apDict{"qdelete"};
 $qquery = $apDict{"qquery"};
 
-if($slave == 0){
-    $resultsPath = "$RESULTS_PATH/$datePath$prefix";
-    $local = "$resultsPath/${procedureId}/local";
-    $queuePaths = "$resultsPath/${procedureId}";
+if($DEPO_PATH eq ""){
+    if($slave == 0){
+        $resultsPath = "$RESULTS_PATH/$datePath$prefix";
+        $local = "$resultsPath/${procedureId}/local";
+        $queuePaths = "$resultsPath/${procedureId}";
+    } else {
+        $resultsPath = "$cwd/RP-files";
+        $local = $resultsPath;
+        $queuePaths = $resultsPath;
+    }
 } else {
-    $resultsPath = "$cwd/RP-files";
+    $resultsPath = "$DEPO_PATH";
     $local = $resultsPath;
     $queuePaths = $resultsPath;
 }
+
+print STDERR "Results-path: $resultsPath\n";
+
 # shell scripts for local jobs go to $local, created if needed only
 if(!-e $resultsPath){
     system("mkdir -p -m 775 $resultsPath");
@@ -2103,13 +2114,13 @@ for( $tt = 0; $tt < $nTasks; $tt++){
         # did with the parallel
         if(!-e $local){ system("mkdir -p -m 775 $local"); }
         $shellFile = "$local/${procedureId}_${stepo}.sh";
-        print "shellFile=$shellFile\n";
+#        print "shellFile=$shellFile\n";
         open(S, ">$shellFile");
 #        print S "$tSteps\n";
         if($DELAY eq "WAIT"){
             print S "$tStepsShrt\ntouch $marker\n";
         } else {
-            print S "$tStepsShrt &\npipePid=\$!\necho \$pipePid\n";
+            print S "$tStepsShrt >> /dev/null &\npipePid=\$!\necho \$pipePid\n";
         }
         close(S);
         if($execute == 1){
@@ -2214,7 +2225,7 @@ close(LOG);
 
 print STDERR "$ts FINE\n";
 if($qsubMsg eq ""){
-    print "$me concluded\n";
+    print STDERR "$me concluded\n";
 }
 
 exit;

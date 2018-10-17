@@ -40,7 +40,7 @@ use Exporter qw(import);
  
 our @EXPORT_OK = qw(pexp cexp getAPflags getAPtypes);
 
-our @EXPORT = qw(pexp cexp getAPflags getAPtypes validateTask locateTBlegos);
+our @EXPORT = qw(pexp cexp getAPflags getAPtypes validateTask locateTBlegos getPipelineDefs);
 
 #check whether the task suffix is correct
 sub validateTask(){
@@ -67,6 +67,21 @@ sub validateTask(){
     }
 }
  
+sub getPipelineDefs(){
+    my $pipePath = shift;
+    my %ppdict;
+    open(AP, "< $pipePath/AP_project");
+    while(<AP>){
+        if(/=/){
+            chop;
+            my ($key, $value) = split(/=/);
+            $ppdict{$key} = $value;
+        }
+    }
+    close(AP);
+    return %ppdict;
+}
+
 sub locateTBlegos(){
 #    my $pPath = @_[0];
     my $pPath = shift;
@@ -75,7 +90,7 @@ sub locateTBlegos(){
 
     my %legos;
     my @pp;
-#    print "LEGOS in $pPath\n";
+    print STDERR "LEGOS in $pPath\n";
     open(P, "ls $pPath|");
     while(<P>){
         if(/^TB_/){
