@@ -54,12 +54,12 @@ sub validateTask(){
     }
     my ($prefix, $tname) = split(/-/, $task);
     if($pdtx{$prefix} eq ""){
-        print "PREFIX: $prefix\n";
+#        print "PREFIX: $prefix\n";
         if($locLegos{$prefix} eq ""){
-            print "no PREFIX: $prefix\n";
+#            print "no PREFIX: $prefix\n";
             return 0;
         } else {
-            print "yes PREFIX: $prefix\n";
+#            print "yes PREFIX: $prefix\n";
             return 1;
         }
     } else {

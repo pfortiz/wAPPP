@@ -1006,9 +1006,11 @@ if($execute == $QDELETE){
 #exit;
 
 $failsFile = "$resultsPath/${procedureId}_$times.fail";
-print STDERR "Logs to $logFile\n";      # line 2
-print STDERR "fails to $failsFile\n";   # line 3
-print STDERR "host = $host\n";         # line 4
+
+#print STDERR "Logs to $logFile\n";      # line 2
+#print STDERR "fails to $failsFile\n";   # line 3
+#print STDERR "host = $host\n";         # line 4
+
 if($execute == 0){
     *LOG = STDERR;
     *FAIL = STDERR;
@@ -2223,9 +2225,9 @@ print LOG "$ts $procedureId completed\n";
 
 close(LOG);
 
-print STDERR "$ts FINE\n";
 if($qsubMsg eq ""){
-    print STDERR "$me concluded\n";
+    print STDERR "$ts $pipelineFile FINE\n";
+    print STDERR "$me $procedureId concluded\n";
 }
 
 exit;

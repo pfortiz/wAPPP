@@ -16,12 +16,32 @@ my @timeUnits = qw(day month year century hour minute second);
 my @daysInMond = qw(0 31 28 31 30 31 30 31 31 30 31 30 31);
 my @monthsInWords = qw(dummy January February March April May June July August September October November December);
 
+my %validIntervals = qw(
+    today_UT 1
+    today_GMT 1
+    today_LocalTime 1
+    tomorrow_UT 1
+    tomorrow_GMT 1
+    tomorrow_LocalTime 1
+    yesterday_UT 1
+    yesterday_GMT 1
+    yesterday_LocalTime 1
+    lastMonth 1
+    lastYear 1
+);
+#    lastWeek 1
+
+
 use Exporter qw(import);
  
 #our @EXPORT_OK = qw(isLeap equivDateDoy dateToDoy listOfDates daysInMonth daysInYear todayInDoy datesBetween segmentedDates getListOfDates);
 
-our @EXPORT = qw(isLeap equivDateDoy dateToDoy listOfDates daysInMonth daysInYear todayInDoy datesBetween segmentedDates getListOfDates getSpecialDates getUTCat00);
+our @EXPORT = qw(isLeap equivDateDoy dateToDoy listOfDates daysInMonth daysInYear todayInDoy datesBetween segmentedDates getListOfDates getSpecialDates getUTCat00 getValidIntervals);
  
+# returns the hash containing the valid intervals
+sub getValidIntervals(){
+    return %validIntervals;
+}
  
 # get the list of dates in a valid date-string
 #
@@ -42,7 +62,7 @@ our @EXPORT = qw(isLeap equivDateDoy dateToDoy listOfDates daysInMonth daysInYea
 #
 sub getListOfDates(){
     my $lod = shift;
-    my $_;
+#    my $_;
 #    my $_ = @_[0];
     my ($interval, $date, $unit, $theDateString, $unit);
     my @parts = split(/\//, $lod);
@@ -438,7 +458,8 @@ sub segmentedDates {
     # Do we have a single month, a list of months or a range of months?
     # In all cases, we obtain a list of months.
     my ($amon, $mon1, $mon2);
-    my $_ = $month_c;
+#    my $_ = $month_c;
+    $_ = $month_c;
 
     my @months;
     if(/:/){        # we got a range of months
