@@ -17,17 +17,27 @@ my @daysInMond = qw(0 31 28 31 30 31 30 31 31 30 31 30 31);
 my @monthsInWords = qw(dummy January February March April May June July August September October November December);
 
 my %validIntervals = qw(
+    this_year 1
+    this_month 1
     today_UT 1
     today_GMT 1
     today_LocalTime 1
+    today-local-time 2
+    today-universal-time 2
     tomorrow_UT 1
     tomorrow_GMT 1
     tomorrow_LocalTime 1
+    tomorrow-local-time 2
+    tomorrow-universal-time 2
     yesterday_UT 1
     yesterday_GMT 1
     yesterday_LocalTime 1
-    lastMonth 1
-    lastYear 1
+    yesterday-local-time 2
+    yesterday-universal-time 2
+    last_Month 1
+    last_Year 1
+    next_Month 2
+    next_Year 2
 );
 #    lastWeek 1
 
@@ -62,18 +72,21 @@ sub getValidIntervals(){
 #
 sub getListOfDates(){
     my $lod = shift;
+#    print "List of dates argument: $lod\n";
 #    my $_;
 #    my $_ = @_[0];
     my ($interval, $date, $unit, $theDateString, $unit);
     my @parts = split(/\//, $lod);
-    if(!$lod =~ /\/dt=/){
+    if(!($lod =~ /\/dt=/)){
         $interval = "dt=1day";
+#        print "No dt= detected\n";
         $theDateString = $lod;
     } else {
         $date = $lod;
 #        print "Splitting: $lod\n";
         ($theDateString, $interval) = split(/\//, $lod);
     }
+#    print "Interval: $interval\n";
     $interval =~ s/dt=//;
     $_ = lc($interval);
 #    print "Interval: $interval\n";
@@ -505,27 +518,66 @@ sub segmentedDates {
 sub getSpecialDates(){
     my $directive = shift;
     my $initialTime = time; # time in unix time-stamp
+    my $modifiedTime;
     my @lodates;
     my ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst);
     my ($yy, $mm, $dd);
     print "TimeStamp: $initialTime\n";
-    if($directive eq "today-local-time"){
+    $directive = lc($directive);
+    if($directive eq "today-local-time" or
+       $directive eq "today_localtime"){
         ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) = localtime($initialTime);
-    } elsif($directive eq "yesterday-local-time"){
+    } elsif($directive eq "yesterday-local-time" or
+       $directive eq "yesterday_localtime"){
         $initialTime -= 86400;
         ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) = localtime($initialTime);
-    } elsif($directive eq "tomorrow-local-time"){
+    } elsif($directive eq "tomorrow-local-time" or
+       $directive eq "tomorrow_localtime"){
         $initialTime += 86400;
         ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) = localtime($initialTime);
-    } elsif($directive eq "today-universal-time"){
+    } elsif($directive eq "today-universal-time" or
+            $directive eq "today_ut" or 
+            $directive eq "today_gmt"){
         ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) = gmtime($initialTime);
 #        print gmtime($initialTime) . "\n";
-    } elsif($directive eq "yesterday-universal-time"){
+    } elsif($directive eq "yesterday-universal-time" or
+            $directive eq "yesterday_ut" or
+            $directive eq "yesterday_gmt"){
         $initialTime -= 86400;
         ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) = gmtime($initialTime);
-    } elsif($directive eq "tomorrow-universal-time"){
+    } elsif($directive eq "tomorrow-universal-time" or
+            $directive eq "tomorrow_ut" or 
+            $directive eq "tomorrow_gmt"){
         $initialTime += 86400;
         ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) = gmtime($initialTime);
+    } elsif($directive eq "last_year"){
+        ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) = gmtime($initialTime);
+        $yy = $D_year + 1900 -1;
+        my $dstring = "$yy-01-01:$yy-12-31";
+        print "YEAR OF THE LORD: $D_year $dstring\n";
+        return &getListOfDates($dstring);
+    } elsif($directive eq "last_month"){
+        ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) = gmtime($initialTime);
+        $yy = $D_year + 1900 ;
+#        print "MONTH OF ALLAH: $D_year $D_mon $D_mday\n";
+        # this trick should take care of being too close to new year's day,
+        # putting us always at the last day of the previous month
+        $modifiedTime = $initialTime - ($D_mday +1)*86400;
+        ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) = gmtime($modifiedTime);
+#        print "MONTH OF BUDDHA: $D_year $D_mon $D_mday\n";
+        my $dstring = sprintf("%d-%02d", $yy, $D_mon+1);
+        return &getListOfDates($dstring);
+    } elsif($directive eq "this_year"){
+        ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) = gmtime($initialTime);
+        $yy = $D_year + 1900 ;
+        my $dstring = sprintf("%d-01-01:%d-%02d-%02d", $yy, $yy,$D_mon+1, $D_mday);
+        return &getListOfDates($dstring);
+    } elsif($directive eq "this_month"){
+        ($D_sec,$D_min,$D_hour,$D_mday,$D_mon,$D_year,$D_wday,$D_yday,$D_isdst) = gmtime($initialTime);
+        $yy = $D_year + 1900 ;
+        my $mes = $D_mon + 1;
+        my $dstring = sprintf("%d-%02d-01:%d-%02d-%02d", $yy, $mes, $yy,$mes, $D_mday);
+        return &getListOfDates($dstring);
     } else {
         print "invalid time directive: $directive. Execution halted\n";
         exit;

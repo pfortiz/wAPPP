@@ -641,7 +641,7 @@ $dlists{"LISTOFMONTHS"} = 1;
 @zeitu = time;
 $zeit = localtime();
 
-print STDERR "Date: $mode $year $month $day DIM: $DAYSINMONTH MND: $lmonth\n";
+# print STDERR "Date: $mode $year $month $day DIM: $DAYSINMONTH MND: $lmonth\n";
 
 if(!-e $pipelineFile){
     die "$pipelineFile does not exist. Nicht hier.\n";
@@ -826,7 +826,7 @@ if($DEPO_PATH eq ""){
     $queuePaths = $resultsPath;
 }
 
-print STDERR "Results-path: $resultsPath\n";
+#print STDERR "Results-path: $resultsPath\n";
 
 # shell scripts for local jobs go to $local, created if needed only
 if(!-e $resultsPath){

@@ -205,7 +205,9 @@ date ranges. Use "test_dateString" to explore all possibilities
 date-definitions can also be:
 USAGE
     foreach $k (sort keys %specialDates){
-        print "\t$k\n";
+        if($specialDates{$k} == 1){ # only main words are listed here
+            print "\t$k\n";
+        }
     }
     exit;
 }
@@ -304,7 +306,15 @@ $date = $datesToProcess;
 $isSpecial = $specialDates{$datesToProcess};
 print "isSpecial: $datesToProcess $isSpecial\n";
 
-if(/time/){
+
+#   Live demo code for the time package features
+#   $request = "last_month";
+#   @loda = &getSpecialDates($request);
+#   print "$request: @loda\n";
+#   exit;
+
+#if(/time/){
+if($isSpecial ne ""){
     @LISTOFDATES = &getSpecialDates($datesToProcess);
     ($utcAt0000, $nSecsFromMidnight) = &getUTCat00();
     $uTracer = "_${nSecsFromMidnight}_$Iam";
@@ -419,7 +429,7 @@ open(P,"<$tmFile");
 undef @taskLines;
 
 # imposing an artificial number of iterations
-$maxTimes = 2;
+$maxTimes = 50;
 
 while(<P>){
     chop;
@@ -715,9 +725,11 @@ foreach $tml (@tmLines){
 #exit;
 
 $maxFails = $defs{"maxFails"};
+print "MAX-FAILS: $maxFails\n";
 if($maxFails eq ""){
-    $maxFails = 100;
+    $maxFails = 5;
 }
+print "MAX-FAILS: $maxFails\n";
 
 if($trace eq "on"){
     foreach $k (sort keys %defs){
@@ -786,6 +798,7 @@ if ($site eq "nonParallel"){
     $jobsID{-32768} = -1;
     $myUID = $<;
     $pipeName =~ s/.tm//;
+    $nRunningJobs = 0;
     while(){
         # let's pick up the jobIds of all running jobs
         # I want to group all system dependent calls under one package rather
@@ -918,7 +931,7 @@ if ($site eq "nonParallel"){
 
             foreach $t (@tasks){
     
-                print "Task: $t\n";
+                print "\nTask: $t\n";
 #                $laxDim = "xd$t";
 #                print STDERR "Task: $t @$laxDim\n";
     
@@ -948,17 +961,34 @@ if ($site eq "nonParallel"){
                 $ttracers .= "RNNG_TRACER=$taskRunning ";
                 $ttracers .= "DEPO_PATH=$tracersDir";
                 $dask = "$t$dateToProcess$uTracer";
+                if($taskDefinition{$dask} eq ""){
+                    push @dieAufgaben, $dask;
+                    $taskDefinition{$dask} = 1;
+                }
+                if($dependencies{$t} ne ""){
+                    $_ = $dependencies{$t};
+                    @lod = split;
+                    undef @daskDep;
+                    foreach $_ (@lod){
+                        push @daskDep, "$_$dateToProcess$uTracer";
+                    }
+                    $dependencies{$dask} = "@daskDep";
+                    print "\tNEW: $dask depends on $dependencies{$dask}\n"; 
+                }
                 $tjid = $jobsIDs{$dask};
 #                print STDERR "Dask: $dask\n";
     
 #                print "DONE: $taskDone\n";
 #                print "FAIL: $taskFailed\n";
 #                print "RNNG: $taskRunning\n";
+                if($taskCompleted{$dask} == 1) {
+                    print "\t$dask ALREADY DONE\n";
+                    next;
+                }
                 print "\n\n\tdask: $dask\n";
                 print "\ttjid: $tjid\n";
 
-                if($taskCompleted{$dask} == 1) { next; }
-                if($taskHasFailed{$dask} == 1) { next; }
+# non-parallel
     
                 if($taskFails{$dask} eq "") {
                     $taskFails{$dask} = 0;
@@ -971,6 +1001,7 @@ if ($site eq "nonParallel"){
                 if(-e $taskDone){
                     print "\t$taskStatus $dask KOMPLETT\n";
                     $taskCompleted{$dask} = 1;
+                    $report{$dask} = "Completed";
                 #     task was completed, nothing to do... Next!!
 
 #                     Actually, we want to remove the error and log file
@@ -989,11 +1020,14 @@ if ($site eq "nonParallel"){
 #                    }
 
                     $nActiveTasks{$t}--;
+                    $nRunningJobs--;
                     next;
                 } elsif(-e $taskFailed){
                 #     the task failed...
-                    print "\tScheisse mann $taskStatus $dask KAPUT\n";
-                    if( $taskFails{$dask} > $maxFails ){
+                    $nFails =  $taskFails{$dask};
+                    $nRunningJobs--;
+                    print "\tScheisse mann $taskStatus $dask KAPUT $nFails\n";
+                    if( $nFails > $maxFails ){
                     #     number of fails exceeded
                         $taskHasFailed{$dask} = 1;
                     #     we need to mark tasks which depended on this one
@@ -1007,14 +1041,22 @@ if ($site eq "nonParallel"){
                             $taskHasFailed{$dusk} = 1;
                             $nActiveTasks{$_}--;
                         }
+                        $nPending{$dateToProcess}++;
+                        $screwedUp{$dask} = 1;
+                        $report{$dask} = "Failed $maxFails times";
+                        print "$report{$dask}\n";
                         next;
                     } else {
                         $taskFails{$dask}++;
-                        print "Try again, try again, unlinking FAIL_TRACER\n";
+                        print "\tTry again, try again, unlinking FAIL_TRACER\n";
                         unlink($taskFailed);
                     }
 #                    $taskFails{$dask} = 1;
+                } elsif(-e $taskRunning){
+                    print "$dask is running, no worries mate\n";
+                    next;
                 } else {
+                    print "\t$taskStatus $dask not launched yet\n";
                     if($ntimes == 0){
                         print "\t$taskStatus $dask not completed\n";
                     }
@@ -1034,6 +1076,7 @@ if ($site eq "nonParallel"){
                 $rmonth = $monthToRun{$t};
                 $dow = $dayOfWeek{$t};
 
+#                if($taskHasFailed{$dask} == 1) { next; }
     
     
                 if($rday ne "*"){
@@ -1066,30 +1109,70 @@ if ($site eq "nonParallel"){
                 $commando = $command{$t};
                 $depe = $dependencies{$t};
                 if($depe eq ""){
-                    print "\t0704: $t is independent\n";
+                    print "\tFREE: $t is independent\n";
                 } else {
                     print "\tSCK: $t depends on $dependencies{$t}\n";
                 }
-                if($dependencies{$t} ne ""){
-                    $_ = $dependencies{$t};
+#                if($dependencies{$t} ne ""){
+#                    $_ = $dependencies{$t};
+#                    @lod = split;
+#                    $nMissing = 0;
+#                    foreach $_ (@lod){
+#                        $done = "$dailyDir/$_.Done";
+#                        print "Looking for: $done\n";
+#                        if(!-e $done){
+#                            if($trace eq "on"){
+#                                print "\t$t: waiting for $_ to be done.\n";
+#                            }
+#        #                    $canRun = "H";
+#                            $nMissing++;
+#                        } else {
+#                            if($trace eq "on" ){
+#                                if($ntimes == 0){ print "$t: $_ COMPLETED.\n"; }
+#                            }
+#                        }
+#                    }
+
+                if($dependencies{$dask} ne ""){
+                    print "Validating dependencies for $dask\n";
+                    $_ = $dependencies{$dask};
                     @lod = split;
                     $nMissing = 0;
                     foreach $_ (@lod){
-                        $done = "$dailyDir/$_.Done";
-                        if(!-e $done){
+                        if($taskCompleted{$_} == 1) {
+                            if($trace eq "on" ){
+                                if($ntimes == 0){ print "$t: $_ COMPLETED.\n"; }
+                            }
+                        } elsif($screwedUp{$_} == 1){
+                            if($trace eq "on" ){
+                                print "\t$t: $_ SCREWED UP.\n";
+                            }
+                            $nMissing = -32768;
+                            last;
+                        } else {
                             if($trace eq "on"){
                                 print "\t$t: waiting for $_ to be done.\n";
                             }
         #                    $canRun = "H";
                             $nMissing++;
-                        } else {
-                            if($trace eq "on" ){
-                                if($ntimes == 0){ print "$t: $_ COMPLETED.\n"; }
-                            }
                         }
+#                        $done = "$dailyDir/$_.Done";
+#                        print "Looking for: $done\n";
+#                        if(!-e $done){
+#                            if($trace eq "on"){
+#                                print "\t$t: waiting for $_ to be done.\n";
+#                            }
+#        #                    $canRun = "H";
+#                            $nMissing++;
+#                        } else {
+#                            if($trace eq "on" ){
+#                                if($ntimes == 0){ print "$t: $_ COMPLETED.\n"; }
+#                            }
+#                        }
                     }
                 } else {
-                    $nMissing = 0;
+                    print "No dependencies for $dask\n";
+                    $nMissing = -1;
                 }
 
             
@@ -1098,8 +1181,16 @@ if ($site eq "nonParallel"){
                 #     We can not proceed with this task, not all its dependencies
                 #     have finished... Next!!
                     next; 
+                } elsif($nMissing == -32768){
+                    print "\tignore $dask as it is impossible to complete\n";
+                    # remove from the list of pending tasks
+                    $report{$dask} = "Dependencies failed";
+                    $totalPendingTasks--;
+                    next;
+                } elsif($nMissing == -1){
+                    print "\t$t for $dateToProcess free to run\n";
                 } else {
-                    print STDERR "$t for $dateToProcess can be run\n";
+                    print "\t$t for $dateToProcess GLORY!, dependencies completed\n";
                 }
     
             #     this needs daily dependency, as queueJobs are different for
@@ -1254,7 +1345,7 @@ if ($site eq "nonParallel"){
                     if(!-e $dailyPl){
                         die "We are in deep <beep>, non-existent $dailyPl\n";
                     } else {
-                        print STDERR "Alles klar mit $dailyPl\n";
+#                        print STDERR "Alles klar mit $dailyPl\n";
                     }
     
 #                    $runId = sprintf("-runid=r%03d", $nexec{$dask}+ 1);
@@ -1295,7 +1386,9 @@ if ($site eq "nonParallel"){
                             chop($jobId);
 #                            print "\tLaunched $t\n\t$commando\n\t$processingOutput\n";
                             print "\tJOB-ID: $dask $jobId\n";
+                            print "\t$dask LAUNCHED\n";
                             $jobsIDs{$dask} = $jobId;
+                            $nRunningJobs++;
 
     
     #     can we associate one or more jobIDs with this task at this point?
@@ -1363,6 +1456,7 @@ if ($site eq "nonParallel"){
         }
         
         print "\tTOTAL-pending tasks: $totalPendingTasks\n";    
+        print "\tTOTAL-running Jobs: $nRuuningJobs\n";    
 
     
         if($totalPendingTasks == 0){
@@ -1389,6 +1483,11 @@ if ($site eq "nonParallel"){
         }
 
     } #  end of while looping
+    print "Final report:\n";
+    foreach $t (@dieAufgaben){
+        print "$t: $report{$t}\n";
+    }
+
 
 
 } else {
@@ -1528,8 +1627,11 @@ if ($site eq "nonParallel"){
                 $tjid = $queueJob{$dask};
     #            print STDERR "Dask: $dask\n";
     
-                if($taskCompleted{$dask} == 1) { next; }
-                if($taskHasFailed{$dask} == 1) { next; }
+                if($taskCompleted{$dask} == 1) {
+                    print "\t$dask ALREADY DONE\n";
+                    next;
+                }
+#                if($taskHasFailed{$dask} == 1) { next; }
     
                 if($taskFails{$dask} eq "") {
                     $taskFails{$dask} = 0;
