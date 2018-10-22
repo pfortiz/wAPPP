@@ -532,10 +532,14 @@ $pid = $$;
 $_ = $date;
 
 if(/\@/){        # we've got a segmented range of dates
-    print STDERR "segmented dates: $date\n";
+    if($slave != 1){
+        print STDERR "segmented dates: $date\n";
+    }
     @LISTOFDATES = &segmentedDates($date, "-");
     $ndates = $#LISTOFDATES + 1;
-    print STDERR "N-segmented-dates $ndates\n";
+    if($slave != 1){
+        print STDERR "N-segmented-dates $ndates\n";
+    }
     $dlists{"LISTOFDATES"} = 1;
     $mode = "segmented-dates";
     $date1 = $LISTOFDATES[0];
@@ -547,11 +551,15 @@ if(/\@/){        # we've got a segmented range of dates
 #    exit;
 } elsif(/:/){        # we've got a full range of dates
     ($firstDate, $lastDate ) = split(/:/,$date);
-    print STDERR "$date, $firstDate, $lastDate\n";
+    if($slave != 1){
+        print STDERR "$date, $firstDate, $lastDate\n";
+    }
     if($firstDate ne "" and $lastDate ne ""){
         @LISTOFDATES = &datesBetween($firstDate, $lastDate, "-");
         $ndates = $#LISTOFDATES + 1;
-        print STDERR "N-datesBetween: $ndates\n";
+        if($slave != 1){
+            print STDERR "N-datesBetween: $ndates\n";
+        }
         $dlists{"LISTOFDATES"} = 1;
         $prefix = "";
         $date1 = $LISTOFDATES[0];
@@ -566,8 +574,10 @@ if(/\@/){        # we've got a segmented range of dates
 } elsif(/,/){   # we've got a list of user defined dates
     @LISTOFDATES = split(/,/);
     $ndates = $#LISTOFDATES + 1;
-    print STDERR "user provided dates: @LISTOFDATES\n";
-    print STDERR "N-user-provided-dates $ndates\n";
+    if($slave != 1){
+        print STDERR "user provided dates: @LISTOFDATES\n";
+        print STDERR "N-user-provided-dates $ndates\n";
+    }
     $dlists{"LISTOFDATES"} = 1;
     $mode = "userdef-dates";
     $date1 = $LISTOFDATES[0];
@@ -593,13 +603,17 @@ if(/\@/){        # we've got a segmented range of dates
         $mode = "yearly";
         $prefix = "/tasks";
         @LISTOFDATES = &datesBetween("$year-1-1", "$year-12-31", "-");
-        print STDERR "dates in year $year AD: @LISTOFDATES\n";
+        if($slave != 1){
+            print STDERR "dates in year $year AD: @LISTOFDATES\n";
+        }
         $dlists{"LISTOFDATES"} = 1;
     } elsif ( $day eq "" and $month ne ""){
         $DAYSINMONTH = &daysInMonth($year, $imonth);
         $dvars{"DAYSINMONTH"} = 1;
         @LISTOFDATES = &datesBetween("$year-$month-1", "$year-$month2-$DAYSINMONTH", "-");
-        print STDERR "dates in month $year/$month AD: @LISTOFDATES\n";
+        if($slave != 1){
+            print STDERR "dates in month $year/$month AD: @LISTOFDATES\n";
+        }
         $dlists{"LISTOFDATES"} = 1;
         $mode = "monthly";
         $prefix = "/tasks";
@@ -1999,7 +2013,9 @@ for( $tt = 0; $tt < $nTasks; $tt++){
             }
 
             $$LOOPVAR = $loopycounter;
-            print STDERR "LoopListVar: $LOOPVAR $$LOOPVAR\n";
+            if($slave != 1){
+                print STDERR "LoopListVar: $LOOPVAR $$LOOPVAR\n";
+            }
         } else {
             $dvars{$LOOPVAR} = 1;
             $loopKind = "numeric-range";
@@ -2225,7 +2241,7 @@ print LOG "$ts $procedureId completed\n";
 
 close(LOG);
 
-if($qsubMsg eq ""){
+if($qsubMsg eq "" and $slave != 1){
     print STDERR "$ts $pipelineFile FINE\n";
     print STDERR "$me $procedureId concluded\n";
 }

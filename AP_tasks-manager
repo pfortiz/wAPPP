@@ -501,6 +501,8 @@ foreach $_ (@taskLines){
     $x = shift(@parts);
     $x = shift(@parts);
     $x = shift(@parts);
+    # adding the next line to skip maxFails for a task
+    $x = shift(@parts);
     $exDim = shift(@parts);
 #    print "exDim = $exDim\n";
     if($exDim eq "none"){
@@ -553,7 +555,7 @@ for($l = 0; $l < $nLines; $l++){
 
 #    print "CL: $tsk $_ | $xdp | $xdm | $toMatch\n";
     $nParts = $#parts + 1;
-    for($i = 7; $i < $nParts; $i++){
+    for($i = 8; $i < $nParts; $i++){
         $pp = $parts[$i];
         $valid = &validateTask($pp);
         if(!$valid){
@@ -609,6 +611,7 @@ foreach $_ (@tmLines){
 
     $walltime{$task} = shift(@parts);
     $maxmem{$task} = shift(@parts);
+    $maxFailures{$task} = shift(@parts);
     $atTheMost = shift(@parts);
     if($atTheMost eq "*"){
         # a very large number of simultaneous processes 
@@ -725,11 +728,10 @@ foreach $tml (@tmLines){
 #exit;
 
 $maxFails = $defs{"maxFails"};
-print "MAX-FAILS: $maxFails\n";
 if($maxFails eq ""){
     $maxFails = 5;
 }
-print "MAX-FAILS: $maxFails\n";
+#print "MAX-FAILS: $maxFails\n";
 
 if($trace eq "on"){
     foreach $k (sort keys %defs){
@@ -752,11 +754,11 @@ if($trace eq "on"){
 #exit;
 
 foreach $dateToProcess (@LISTOFDATES){
-    print STDERR "Sanity check: Dealing with $dateToProcess\n";
+#    print STDERR "Sanity check: Dealing with $dateToProcess\n";
     $nPending{$dateToProcess} = $nTasks;
     $tracingStarted{$dateToProcess} = 0;
 }
-print STDERR "topdirectory is $topDir\n";
+#print STDERR "topdirectory is $topDir\n";
 
 print "Xdim: |@xDim|\n";
 
@@ -868,7 +870,7 @@ if ($site eq "nonParallel"){
                 $nPLeft = &getNavailableProcesses();
                 print "Number of spare processes left: $nPLeft\n";
             }
-            print STDERR "Dealing with $dateToProcess\n";
+#            print STDERR "Dealing with $dateToProcess\n";
 
     
     
@@ -924,7 +926,7 @@ if ($site eq "nonParallel"){
         #      old code starts here....
     
             $dt = $currentTime - $initialTime;
-            print "TOD: $thms = $tod  $dt [s]\n";
+#            print "TOD: $thms = $tod  $dt [s]\n";
         
         #     this nPending is now defined for a given date
             $nPending{$dateToProcess} = 0;
@@ -986,7 +988,7 @@ if ($site eq "nonParallel"){
                     next;
                 }
                 print "\n\n\tdask: $dask\n";
-                print "\ttjid: $tjid\n";
+#                print "\ttjid: $tjid\n";
 
 # non-parallel
     
@@ -1027,7 +1029,8 @@ if ($site eq "nonParallel"){
                     $nFails =  $taskFails{$dask};
                     $nRunningJobs--;
                     print "\tScheisse mann $taskStatus $dask KAPUT $nFails\n";
-                    if( $nFails > $maxFails ){
+#                    if( $nFails > $maxFails ){
+                    if( $nFails > $maxFailures{$t} ){
                     #     number of fails exceeded
                         $taskHasFailed{$dask} = 1;
                     #     we need to mark tasks which depended on this one
@@ -1043,7 +1046,7 @@ if ($site eq "nonParallel"){
                         }
                         $nPending{$dateToProcess}++;
                         $screwedUp{$dask} = 1;
-                        $report{$dask} = "Failed $maxFails times";
+                        $report{$dask} = "Failed $nFails times";
                         print "$report{$dask}\n";
                         next;
                     } else {
@@ -1134,7 +1137,7 @@ if ($site eq "nonParallel"){
 #                    }
 
                 if($dependencies{$dask} ne ""){
-                    print "Validating dependencies for $dask\n";
+                    print "\tValidating dependencies for $dask\n";
                     $_ = $dependencies{$dask};
                     @lod = split;
                     $nMissing = 0;
@@ -1171,7 +1174,7 @@ if ($site eq "nonParallel"){
 #                        }
                     }
                 } else {
-                    print "No dependencies for $dask\n";
+                    print "\tNo dependencies for $dask\n";
                     $nMissing = -1;
                 }
 
@@ -1553,7 +1556,7 @@ if ($site eq "nonParallel"){
                 $nPLeft = &getNavailableProcesses();
                 print "Number of spare processes left: $nPLeft\n";
             }
-            print STDERR "Dealing with $dateToProcess\n";
+#            print STDERR "Dealing with $dateToProcess\n";
     
     
             # these quantities remain unchanged during the loop, and in fact,
@@ -1593,7 +1596,7 @@ if ($site eq "nonParallel"){
             #  old code starts here....
     
             $dt = $currentTime - $initialTime;
-            print "TOD: $thms = $tod  $dt [s]\n";
+#            print "TOD: $thms = $tod  $dt [s]\n";
         
             # this nPending is now defined for a given date
             $nPending{$dateToProcess} = 0;
@@ -1842,7 +1845,8 @@ if ($site eq "nonParallel"){
     
                 if(-e $taskFailed){
                     # the task failed...
-                    if( $taskFails{$dask} > $maxFails ){
+#                    if( $taskFails{$dask} > $maxFails ){
+                    if( $taskFails{$dask} > $maxFailures{$t} ){
                         # number of fails exceeded
                         $taskHasFailed{$dask} = 1;
                         # we need to mark tasks which depended on this one

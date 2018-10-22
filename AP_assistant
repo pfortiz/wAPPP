@@ -452,8 +452,10 @@ if($inFile eq "-create-bb-sample"){
                             print FF "$tn.timeRestrictions=$p0\n";
                             $p0 = shift(@parts); # maxMem
                             print FF "$tn.maxMemory=$p0\n";
-                            $p0 = shift(@parts); # maxMem
+                            $p0 = shift(@parts); # wallTime
                             print FF "$tn.wallTime=$p0\n";
+                            $p0 = shift(@parts); # maxFails
+                            print FF "$tn.maxFails=$p0\n";
                             $p0 = shift(@parts); # atMost
                             print FF "$tn.atMost=$p0\n";
                             $p0 = shift(@parts); # xtraDim
@@ -735,6 +737,7 @@ INSTRUCTIONS
             $ttr = $ffdict{"$t.timeRestrictions"};
             $twt = $ffdict{"$t.wallTime"};
             $txm = $ffdict{"$t.maxMemory"};
+            $tmf = $ffdict{"$t.maxFails"};
             $tam = $ffdict{"$t.atMost"};
             $txd = $ffdict{"$t.extraDimension"};
             if($txd eq ""){
@@ -755,7 +758,7 @@ INSTRUCTIONS
             $tcf = $ffdict{"$t.tempCtlFile"};
             $tpr = $ffdict{"$t.processor"};
             $tor = $ffdict{"$t.origin"};
-            print TM "$t: $ttr $twt $txm $tam $txd wappp_$t $tdp\n";
+            print TM "$t: $ttr $twt $txm $tmf $tam $txd wappp_$t $tdp\n";
             print TM "wappp_$t = runPipeline $t DATE\n\n";
 
             $dire = "$cwd/pipelines/$t";
@@ -935,6 +938,10 @@ sub create_tr_sample_and_readme(){
 # maxmem:
 #     is expressed in mega-bytes
 # 
+# maxFails:
+#     maximum number of fails allows for the task. Upon fail, the task is
+#     relaunched up to this number of times
+#
 # atMost:
 #     task-manager can run only so many tasks of this kind at any given
 #     time. This is designed to work with data downloader, where launching
@@ -956,25 +963,25 @@ sub create_tr_sample_and_readme(){
 # Following this syntax/structure, these are exaple tasks:
 
 
-dlftp-mod021km: */*/*/* 6 9999 42 getftp_mod021km 
+dlftp-mod021km: */*/*/* 6 9999 5 42 getftp_mod021km 
 getftp_mod021km = runPipeline dlftp-mod021km DATE
 
-dlftp-mod03: */*/*/* 1 9999 42 getftp_mod03 
+dlftp-mod03: */*/*/* 1 9999 5 42 getftp_mod03 
 getftp_mod03 = runPipeline dlftp-mod03 DATE
 
-dlftp-mod35_L2: */*/*/* 4 9999 42 getftp_mod35_L2 
+dlftp-mod35_L2: */*/*/* 4 9999 5 42 getftp_mod35_L2 
 getftp_mod35_L2 = runPipeline dlftp-mod35_L2 DATE
 
-proc-MOG_2P: */*/*/* 3 9999 * MOG_2P dlftp-mod021km dlftp-mod35_L2 dlftp-mod03
+proc-MOG_2P: */*/*/* 3 9999 2 * MOG_2P dlftp-mod021km dlftp-mod35_L2 dlftp-mod03
 MOG_2P = runPipeline MOG_2P DATE
 
-proc-MOG_3U: */*/*/* 5 9999 * MOG_3U proc-MOG_2P
+proc-MOG_3U: */*/*/* 5 9999 2 * MOG_3U proc-MOG_2P
 MOG_3U = runPipeline MOG_3U DATE
 
-dqc-verifyMOG_3U:  */*/*/* 1.0 9999 * verifyMOG_3U proc-MOG_2P proc-MOG_3U
+dqc-verifyMOG_3U:  */*/*/* 1.0 9999 1 * verifyMOG_3U proc-MOG_2P proc-MOG_3U
 verifyMOG_3U = runPipeline dqc-verifyMOG_3U DATE
 
-dqc-verifyMOG_2P: */*/*/* 1 9999 * verifyMOG_2P proc-MOG_2P
+dqc-verifyMOG_2P: */*/*/* 1 9999 2 * verifyMOG_2P proc-MOG_2P
 verifyMOG_2P = runPipeline dqc-verifyMOG_2P DATE
 
 # Notice that the prefix for all task-name entries contain encoded values:
@@ -1807,6 +1814,7 @@ SAMPLE_FILE
 sub bbproc(){    
     print "historyPath.proc = $historyPath\n";
     print FF <<"FF_FILE";
+$tn.maxFails=5
 $tn.atMost=*
 
 # PROCESSOR should point to an executable file eg:
@@ -1907,6 +1915,7 @@ sub bbud(){
     }
     if($tagLocal eq "ignore"){
         print FF <<"FF_FILE";
+$tn.maxFails=5
 $tn.atMost=*
 
 $tn.parameters.begin
@@ -1945,6 +1954,7 @@ FF_FILE
 
     } else {
         print FF <<"FF_FILE";
+$tn.maxFails=5
 $tn.atMost=*
 $tn.parameters.begin
 # you can edit lines below this one
@@ -1975,6 +1985,7 @@ FF_FILE
 
 sub bbdxst(){
     print FF <<"FF_FILE";
+$tn.maxFails=5
 $tn.atMost=*
 
 # eg: /data/atsr/SEVIRI/YYY/SMM/SDD/GT_SEV_2P
@@ -2016,6 +2027,7 @@ FF_FILE
 
 sub bbrsync(){
     print FF <<"FF_FILE";
+$tn.maxFails=5
 $tn.atMost=12
 
 # either SOURCE_PATH or DEST_PATH must contain the login details
@@ -2067,6 +2079,7 @@ FF_FILE
 sub bbspwn(){
     print "historyPath.proc = $historyPath\n";
     print FF <<"FF_FILE";
+$tn.maxFails=5
 $tn.atMost=*
 
 # PROCESSOR should point to an executable file eg:
@@ -2123,6 +2136,7 @@ FF_FILE
 
 sub bbdqc(){
     print FF <<"FF_FILE";
+$tn.maxFails=5
 $tn.atMost=*
 
 # This task is defined only for GT created products.
@@ -2160,6 +2174,7 @@ FF_FILE
 
 sub bbdlftp(){
     print FF <<"FF_FILE";
+$tn.maxFails=5
 $tn.atMost=42
 
 $tn.ftp_site=
@@ -2202,6 +2217,7 @@ FF_FILE
 
 sub bbulftp(){
     print FF <<"FF_FILE";
+$tn.maxFails=5
 $tn.atMost=42
 
 $tn.ftp_site=
