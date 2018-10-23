@@ -480,9 +480,7 @@ while(<P>){
 close(P);
 
 # DEBUG only:
-#foreach $k (keys %defs){
-#    print "defs[ $k ] = $defs{$k}\n";
-#}
+foreach $k (keys %defs){ print "defs[ $k ] = $defs{$k}\n"; }
 
 #foreach $xl (@taskLines){ print "XL: $xl\n"; }
 #foreach $twd (keys %hasXdim){ print "$twd needs to open $hasXdim{$twd}\n"; }
@@ -727,6 +725,10 @@ foreach $tml (@tmLines){
 # added July 8, 2017 to handle tasks with extra dimensions differently
 #exit;
 
+$snooze = $defs{"snoozeInSecods"};
+if($snooze eq ""){
+    $snooze = 20;
+}
 $maxFails = $defs{"maxFails"};
 if($maxFails eq ""){
     $maxFails = 5;
@@ -1108,6 +1110,16 @@ if ($site eq "nonParallel"){
                         next;
                     }
                 }
+
+                # do we have enough memory?
+                $freeMem = &getFreeMemoryInMB($machine);
+
+#                print "\tTask requested memory $maxmem{$t} [MB]\n";
+#                print "\t$freeMem Megabytes free in the system\n";
+                if ($freeMem * 0.9 < $maxmem{$t}){
+                    print "Task $dask deferred waiting for more memory\n";
+                    next;
+                }
     
                 $commando = $command{$t};
                 $depe = $dependencies{$t};
@@ -1472,8 +1484,8 @@ if ($site eq "nonParallel"){
         #    Sleep for a while (5 minutes to start with)
 #            sleep(300);
 #            sleep(120);
-            print "\tSnoozing for a while... zzzzzz\n";
-            sleep(2);
+            print "\tSnoozing for $snooze seconds... zzzzzz\n";
+            sleep($snooze);
         }
     
         $ntimes++;
@@ -2017,8 +2029,9 @@ if ($site eq "nonParallel"){
         } else {
             #Sleep for a while (5 minutes to start with)
     #        sleep(300);
-    #        sleep(120);
-            sleep(120);
+    #       $snooze is now defined in the .tm file, so it's totally user
+    #       controlable
+            sleep($snooze);
         }
     
         $ntimes++;

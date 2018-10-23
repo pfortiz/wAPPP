@@ -726,7 +726,7 @@ INSTRUCTIONS
         print "About to open: $outFile\n";
         open(TM, ">$outFile");
 
-        print TM "maxFails = 10\n\n";
+        print TM "snoozeInSeconds = 5\n";
         print TM "NRT_time_delay_in_days = 4\n\n";
 #        *TM = STDOUT;
         undef @pipeDirs;

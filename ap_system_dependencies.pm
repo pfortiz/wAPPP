@@ -13,7 +13,7 @@ use strict;
 
 use Exporter qw(import);
 
-our @EXPORT = qw(getFromRc getNavailableProcesses getRunningJobIds getProcessDict decHourToHHMM decHourToHHMMSS getSiteParams createQsubFile pipeStats);
+our @EXPORT = qw(getFromRc getNavailableProcesses getRunningJobIds getProcessDict decHourToHHMM decHourToHHMMSS getSiteParams createQsubFile pipeStats getFreeMemoryInMB);
  
 #our @EXPORT_OK = qw(isLeap equivDateDoy dateToDoy listOfDates daysInMonth daysInYear todayInDoy datesBetween segmentedDates getListOfDates);
 
@@ -236,6 +236,52 @@ sub getNavailableProcesses(){
     return $availableProcesses;
 }
 
+# subroutine to retrieve the amount of free memory in the system. This
+# module highly depends on the OS.
+sub getFreeMemoryInMB(){
+    my $machine = lc(shift);
+    print "getFreeMemoryInMB: getting memory in architecture $machine\n";
+    my $freedom = 20;
+    if($machine eq "darwin"){ # we are in a mac environment
+        open(MM, "vm_stat|");
+        $_ = <MM>;
+#        print;
+        my @parts = split;
+        pop (@parts);
+        my $pageSize = pop (@parts);
+#        print "Page-size-in-bytes: $pageSize\n";
+        while(<MM>){
+#            print;
+            if( /Pages free/){
+                @parts = split;
+                my $frei = int(pop (@parts));
+#                print "# free pages: $frei\n";
+                $freedom = ($pageSize * $frei)/1000000.;
+                last;
+            }
+        }
+        close(MM);
+        
+    } elsif ($machine eq "linux"){
+        open(MM, "free -m |");
+        $_ = <MM>;
+#        print;
+        while(<MM>){
+#            print;
+            if( /Mem:/){
+                my @parts = split;
+                $freedom = int($parts[3]);
+                last;
+            }
+        }
+        close(MM);
+    } else {
+        print "Unrecognised machine type $machine\n";
+        print "fix in \$HOME/.automatedProcessing\n";
+        exit();
+    }
+    return $freedom;
+}
 
 # routine to obtain a listing of jobs in the current queue of a parallel
 # system. Thoughts need to be given on how to treat non-parallel systems.
