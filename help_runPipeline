@@ -229,6 +229,14 @@ elif whatToDo == "script":
 #            "Command to execute plus its arguments. Redirection is allowed",
 #            example="exec unlink file-name")
 ##    ] elsif($kind eq "echo")[
+    item = "echo"
+    sca = ozArgs.methods(item, scArgs)
+    scArgs[item] = sca
+    oargs.append(item)
+    sca.addDescription("Prints a message to the console")
+    sca.addMandatoryField("msg","message words", "string",
+            "A message composed of several words",
+            example="{} I'm tired, this is so boring".format(item))
 #    item = "xxx"
 #    sca = ozArgs.methods(item, scArgs)
 #    scArgs[item] = sca
