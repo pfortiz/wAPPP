@@ -606,100 +606,100 @@ class methods(object):
 
 
 
-    def splitArgs(self, args, nmandatory):
-        __name__ = "splitArgs()"
-        if len(args) < self.nKVMandatory:
-            if self.forceRaise:
-                raise ValueError("{} arguments, expecting {}".format(len(args), nmandatory))
-            else:
-                self.do_showHelp({}, {}, {}, [], [self.laAction])
-        doThis = {}
-        todo = []
-        for arg in args:
-            lcarg = arg.lower()
-            if "=" in lcarg:
-                lcparts = lcarg.split("=")
-                parts = arg.split("=")
-                doThis[lcparts[0]] = parts[1]
-                todo.append(lcparts[0])
-                if lcparts[0] == "src":
-                    doThis["assetsFile"] = parts[1]
-                    assetsFile = parts[1]
-            else:
-                doThis[lcarg] = None
-                todo.append(lcarg)
-    
-    #    print __name__, "AssetsFile: ", assetsFile
-        return (doThis, todo)
-
-
-    def checkPresence(self, doit, mustHave, oneAtLeast):
-        fmh = False
-        answer = {}
-        answer["truth"] = False
-        answer["why"] = []
-        for mh in mustHave:
-            if mh not in doit:
-                print "{}=x not defined".format(mh)
-                answer["why"].append("{}=x not defined".format(mh))
-                fmh = True
-            else:
-                answer[mh] = doit[mh]
-        if fmh:
-            answer["truth"] =  True
-        
-        hasList = False
-        k1 = {}
-        for al1 in oneAtLeast:
-            if "list" in str(type(al1)):
-                hasList = True
-                for p in al1:
-                    k1[p] = 1
-            else:
-                k1[al1] = 1
-                pass
-                
-    
-        koneAtLeast = k1.keys()
-        if set(koneAtLeast) != set(mustHave) and len(koneAtLeast) > 0:
-            foal = False
-    
-            missing = {}
-            for mh in oneAtLeast:
-    #            print __name__, "Looking for", mh
-                if "list" in str(type(mh)):
-                    foal = True
-                    for q in mh:
-    #                    print __name__, "is ", q, "in", mh
-                        if q not in doit:
-                            foal = False
-                            missing[q] = True
-                elif mh in doit:
-    #                print __name__, "I've found", mh
-                    foal = True
-                    ass_et = doit[mh]
-                    if mh == "sensorid":
-                        answer[mh] = self.getSensor(ass_et)
-                    elif mh == "siteid":
-                        answer[mh] = self.getSite(ass_et)
-                    elif mh == "pairid":
-                        answer[mh] = self.getPair(ass_et)
-                    elif mh == "detid":
-                        answer[mh] = self.getDetector(ass_et)
-                    elif mh == "type":
-                        if ass_et == "site" or ass_et == "sensor":
-                            answer[mh] = ass_et
-                        pass
-                    break
-                else:
-                    missing[mh] = True
-            if foal == False:
-    #            print "one of {} must be defined".format(oneAtLeast)
-                print "one of {} must be defined".format(missing.keys())
-                answer["truth"] =  True
-        if answer["truth"]:
-            print "I've failed"
-            return answer
-#            sys.xit()
-        return answer
-    
+#    def splitArgs(self, args, nmandatory):
+#        __name__ = "splitArgs()"
+#        if len(args) < self.nKVMandatory:
+#            if self.forceRaise:
+#                raise ValueError("{} arguments, expecting {}".format(len(args), nmandatory))
+#            else:
+#                self.do_showHelp({}, {}, {}, [], [self.laAction])
+#        doThis = {}
+#        todo = []
+#        for arg in args:
+#            lcarg = arg.lower()
+#            if "=" in lcarg:
+#                lcparts = lcarg.split("=")
+#                parts = arg.split("=")
+#                doThis[lcparts[0]] = parts[1]
+#                todo.append(lcparts[0])
+#                if lcparts[0] == "src":
+#                    doThis["assetsFile"] = parts[1]
+#                    assetsFile = parts[1]
+#            else:
+#                doThis[lcarg] = None
+#                todo.append(lcarg)
+#    
+#    #    print __name__, "AssetsFile: ", assetsFile
+#        return (doThis, todo)
+#
+#
+#    def checkPresence(self, doit, mustHave, oneAtLeast):
+#        fmh = False
+#        answer = {}
+#        answer["truth"] = False
+#        answer["why"] = []
+#        for mh in mustHave:
+#            if mh not in doit:
+#                print "{}=x not defined".format(mh)
+#                answer["why"].append("{}=x not defined".format(mh))
+#                fmh = True
+#            else:
+#                answer[mh] = doit[mh]
+#        if fmh:
+#            answer["truth"] =  True
+#        
+#        hasList = False
+#        k1 = {}
+#        for al1 in oneAtLeast:
+#            if "list" in str(type(al1)):
+#                hasList = True
+#                for p in al1:
+#                    k1[p] = 1
+#            else:
+#                k1[al1] = 1
+#                pass
+#                
+#    
+#        koneAtLeast = k1.keys()
+#        if set(koneAtLeast) != set(mustHave) and len(koneAtLeast) > 0:
+#            foal = False
+#    
+#            missing = {}
+#            for mh in oneAtLeast:
+#    #            print __name__, "Looking for", mh
+#                if "list" in str(type(mh)):
+#                    foal = True
+#                    for q in mh:
+#    #                    print __name__, "is ", q, "in", mh
+#                        if q not in doit:
+#                            foal = False
+#                            missing[q] = True
+#                elif mh in doit:
+#    #                print __name__, "I've found", mh
+#                    foal = True
+#                    ass_et = doit[mh]
+#                    if mh == "sensorid":
+#                        answer[mh] = self.getSensor(ass_et)
+#                    elif mh == "siteid":
+#                        answer[mh] = self.getSite(ass_et)
+#                    elif mh == "pairid":
+#                        answer[mh] = self.getPair(ass_et)
+#                    elif mh == "detid":
+#                        answer[mh] = self.getDetector(ass_et)
+#                    elif mh == "type":
+#                        if ass_et == "site" or ass_et == "sensor":
+#                            answer[mh] = ass_et
+#                        pass
+#                    break
+#                else:
+#                    missing[mh] = True
+#            if foal == False:
+#    #            print "one of {} must be defined".format(oneAtLeast)
+#                print "one of {} must be defined".format(missing.keys())
+#                answer["truth"] =  True
+#        if answer["truth"]:
+#            print "I've failed"
+#            return answer
+##            sys.xit()
+#        return answer
+#    
