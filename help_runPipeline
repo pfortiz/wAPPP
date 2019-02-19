@@ -11,6 +11,8 @@ import sys
 import os.path
 import datetime
 
+sys.path.append("essentials")
+
 import ozArgs
 
 __name__ = "help_runPipeline"
@@ -211,6 +213,20 @@ elif whatToDo == "script":
 #            "Command to execute plus its arguments. Redirection is allowed",
 #            example="exec unlink file-name")
 ##    ] elsif($kind eq "loop")[
+    item = "loop"
+    sca = ozArgs.methods(item, scArgs)
+    scArgs[item] = sca
+    oargs.append(item)
+    sca.addDescription("Starts a defined loop which must end with 'endloop'")
+    sca.addMandatoryKV("var","VAR-NAME", "string",
+            "Loop variable name.")
+    sca.addMandatoryKV("from","FIRST_INDEX", "string",
+            "First value for the loop variable.")
+    sca.addMandatoryKV("to","LAST_INDEX", "string",
+            "Last value for the loop variable.")
+    sca.addOptionalKV("inc","delta", "string",
+            "value the loop variable changes from one loop to the next. It can be positive or negative.",  default=1)
+#            example="{} /full/path/to/directory".format(item) )
 #    item = "xxx"
 #    sca = ozArgs.methods(item, scArgs)
 #    scArgs[item] = sca
@@ -220,14 +236,16 @@ elif whatToDo == "script":
 #            "Command to execute plus its arguments. Redirection is allowed",
 #            example="exec unlink file-name")
 ##    ] elsif($kind eq "endloop" or $kind eq "pool")[
-#    item = "xxx"
-#    sca = ozArgs.methods(item, scArgs)
-#    scArgs[item] = sca
-#    oargs.append(item)
-#    sca.addDescription("executes a command ALWAYS")
-#    sca.addMandatoryField("command","file_name", "string",
-#            "Command to execute plus its arguments. Redirection is allowed",
-#            example="exec unlink file-name")
+    item = "endloop"
+    sca = ozArgs.methods(item, scArgs)
+    scArgs[item] = sca
+    oargs.append(item)
+    sca.addDescription("closes a defined loop started with loop")
+    item = "pool"
+    sca = ozArgs.methods(item, scArgs)
+    scArgs[item] = sca
+    oargs.append(item)
+    sca.addDescription("closes a defined loop started with loop")
 ##    ] elsif($kind eq "echo")[
     item = "echo"
     sca = ozArgs.methods(item, scArgs)
