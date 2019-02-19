@@ -16,6 +16,8 @@
 # I could even imagine to be able to generate tex documents based on the
 # arguments. Nothing else is needed.
 
+# A stupid line to introduce a change
+
 import sys
 import numpy as np
 
