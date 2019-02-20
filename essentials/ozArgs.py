@@ -134,14 +134,24 @@ class methods(object):
         self.mandatoryFields = []
         self.nMandatoryFields = 0
         self.allFields = {}
+        self.tuttiFields = []
         self.internalMap = {}
         # multiple Choices args (from 1 to whatever), always k/v
         self.multiChoice = {}
         self.usage = None
         self.description = "Generic description"
+        self.isComment = False
 
+
+    # this is kind of basic, but sooner or later I'll have to create an
+    # equivalent for web (HTML) and another for LaTeX in order to make
+    # things easier.
     def shortHelp(self, pre):
         mappy, theArgs = self.makeMap()
+        if self.isComment:
+            print self.description,"\n"
+            return
+
         print self.label
 #        print "NAME:", self.name
         print "  ",self.description
@@ -151,6 +161,7 @@ class methods(object):
             print "  Usage:", pre, self.usage
 #        print "   Usage ", self.label, self.usage
         arguments = mappy["all"]
+        arguments = theArgs
         for arg in arguments:
             mf = self.allFields[arg]
             if mf.eg is None:
@@ -159,6 +170,8 @@ class methods(object):
                 print "  {} eg, {}\n    {}".format( mf.name, mf.eg, mf.expl)
             if not mf.dependsOn is None:
                 print "    {} requires:".format(mf.dependsOn)
+            if not mf.default is None:
+                print "    Default: {}:".format(mf.default)
             if not mf.pv is None:
                 print "    {} can take any of the following values:".format(mf.name)
                 ilen = 0
@@ -171,11 +184,12 @@ class methods(object):
     #                print "> Missing argument: %-*s : %s" %(mlen, manda, kvm.expl)
                     if len(pv) > 3:
     #                    self._markReview("{}={}".format(key,value), pv[3], revDic)
-                        print "      %-*s: requires: %s"%(ilen, pv[0], pv[3])
+                        print "      %-*s: %s"%(ilen, pv[0], pv[1])
+                        print "      %-*s: requires: %s"%(ilen, "", pv[3])
                     else:
                         print "      %-*s: %s"%(ilen, pv[0], pv[1])
             if not mf.example is None:
-                print "  Example:", mf.example
+                print "    Example:", mf.example
         print ""
         return
 
@@ -264,6 +278,7 @@ class methods(object):
 #        ent  = { "name":name.lower(), "demo":demo, "type":typo, 
 #                 "expl":explanation, "pv":posVal}
         self.mandatoryKV.append( ent )
+        self.tuttiFields.append( ent )
         self.allFields[name] = ent
 #        self.mandatoryKV.append( { "name":name.lower(),
 #                                 "demo":demo, 
@@ -273,10 +288,15 @@ class methods(object):
 
     def addMandatoryField(self, name, demo, typo, explanation, **kvargs):
         ent = Argument(name, demo, typo, explanation, "mfd", **kvargs)
-#        ent = { "name":name.lower(), "demo":demo, "type":typo, 
-#                "expl":explanation, "pv":posVal}
         self.mandatoryFields.append( ent )
         self.allFields[name] = ent
+        self.tuttiFields.append( ent )
+
+    def addSeparator(self, name, demo, typo, explanation, **kvargs):
+        ent = Argument(name, demo, typo, explanation, "sep", **kvargs)
+#        self.mandatoryFields.append( ent )
+#        self.allFields[name] = ent
+        self.tuttiFields.append( ent )
 
     def addOptionals(self, optionalsArray):
         self.optional = optionalsArray
@@ -287,16 +307,22 @@ class methods(object):
         ent = Argument(name, demo, typo, explanation, "okv", **kvargs)
         self.optionalKV.append( ent ) 
         self.allFields[name] = ent
+        self.tuttiFields.append( ent )
 
     def addOptionalField(self, name, demo, typo, explanation, **kvargs):
 #        ent = { "name":name.lower(), "demo":demo, "type":typo, 
 #                "expl":explanation, "default":default, "pv":posVal}
         ent = Argument(name, demo, typo, explanation, "ofd", **kvargs)
         self.allFields[name] = ent
+        self.tuttiFields.append( ent )
         self.optionalFields.append(ent) 
 
     def addDescription(self, description):
         self.description = description
+
+    def asComment(self, comment):
+        self.description = comment
+        self.isComment = True
 
     def addLabel(self, label):
         self.label = label
@@ -317,6 +343,7 @@ class methods(object):
         ent = Argument(name, demo, typo, explanation, "okv", **kvargs)
         self.optionalKV.append( ent ) 
         self.allFields[name] = ent
+        self.tuttiFields.append( ent )
         
         
         
@@ -334,17 +361,35 @@ class methods(object):
         mapo = {}
 #        present = {}
         theArgs = []
+        ordArgs = []
         seq = 0
         # an entry in the map has the form: name, type (mf, mkv, optkv,
         # optord) and possible other things
         mapo["mandatories"] = []
         mapo["present"] = {}
         mapo["usage"] = []
+        mapo["ordered-usage"] = []
         mapo["all"] = []
         musa = mapo["usage"]
+        pusa = mapo["ordered-usage"]
         mall = mapo["all"]
         mpp = mapo["present"]
 
+        for argos in self.tuttiFields:
+            name = argos.name
+            kind = argos.kind
+#            print "Tutti", name, kind
+            if kind == "mfd":
+                pusa.append(name)
+            elif kind == "ofd":
+                pusa.append("[{}]".format(name))
+            elif kind == "mkv":
+                pusa.append("{}={}".format(name, argos.demo))
+            elif kind == "okv":
+                pusa.append("[{}={}]".format(name, argos.demo))
+            ordArgs.append("{}".format(name))
+
+#            pusa.append(name)
         for argos in self.mandatoryFields:
 #            mKeys[argos["name"]] = None
             name = argos.name
@@ -402,8 +447,8 @@ class methods(object):
         mapo["nokv"] = len(self.optionalKV)
         mapo["nof"] = len(self.optionalFields)
         mapo["nargs"] = {"nmkv":0, "nmf":0, "nokv":0, "nof":0}
-        self.usage = "{} {}".format(self.label, " ".join(musa))
-        return mapo, theArgs
+        self.usage = "{} {}".format(self.label, " ".join(pusa))
+        return mapo, ordArgs
 
     def _markReview(self, key, dependents, revDec):
         for dep in dependents:

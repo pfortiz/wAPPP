@@ -1969,10 +1969,12 @@ for( $tt = 0; $tt < $nTasks; $tt++){
             print LOG "invalid activation operator $akti\n";
         }
 #        print STDERR "value for $newvar: $$newvar\n";
-    } elsif($kind eq "loop"){
+    } elsif($kind eq "loop" or $kind eq "foreach"){
 # taskd: LOOP var=VAR-NAME from=FIRST_INDEX to=LAST_INDEX [inc=delta]  -loop
 # taskd:        -VAR-NAME varies from FIRST_INDEX to LAST_INDEX inclusive
 # taskd:        -delta can be positive or negative
+# taskd: LOOP in='list-of-things' (or a variable)
+
         if($versyntax == 1){ next; }
         $_ = $originalSteps;
 #        print STDERR "DBG1: $originalSteps\n";
